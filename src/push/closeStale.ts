@@ -11,3 +11,14 @@ export async function closeStaleNotifications(pendingDoseIds: Set<string>): Prom
     console.error('could not close stale notifications', e)
   }
 }
+
+/** Close this device's notification for one dose (tag = dose id), e.g. after marking it in the app. */
+export async function closeDoseNotification(doseId: string): Promise<void> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  try {
+    const reg = await navigator.serviceWorker.getRegistration()
+    for (const n of (await reg?.getNotifications({ tag: doseId })) ?? []) n.close()
+  } catch (e) {
+    console.error('could not close dose notification', e)
+  }
+}

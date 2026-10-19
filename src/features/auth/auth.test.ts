@@ -8,7 +8,10 @@ const sb = vi.hoisted(() => ({
 vi.mock('../../lib/supabase', () => ({ supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut } } }))
 vi.mock('../../data/profile', () => ({ updateProfile: vi.fn() }))
 
-import { createProfile, isGuest, needsPasswordFinish, setPassword } from './auth'
+const push = vi.hoisted(() => ({ remove: vi.fn() }))
+vi.mock('../../push/subscribe', () => ({ removeThisDeviceSubscription: push.remove }))
+
+import { createProfile, isGuest, needsPasswordFinish, setPassword, signOut } from './auth'
 
 const user = (extra: Partial<User> = {}) =>
   ({ id: 'u1', is_anonymous: false, email_confirmed_at: '2026-10-19T00:00:00Z', ...extra }) as User
@@ -46,6 +49,36 @@ beforeEach(() => {
   sb.updateUser.mockReset()
   sb.signOut.mockReset()
   sb.signOut.mockResolvedValue({ error: null })
+  push.remove.mockReset()
+  push.remove.mockResolvedValue(undefined)
+})
+
+describe('signOut', () => {
+  it('removes this device subscription before ending the session', async () => {
+    const order: string[] = []
+    push.remove.mockImplementation(async () => void order.push('remove'))
+    sb.signOut.mockImplementation(async () => (order.push('signOut'), { error: null }))
+    await signOut()
+    expect(order).toEqual(['remove', 'signOut'])
+  })
+  it('still signs out when removal rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    push.remove.mockRejectedValue(new Error('boom'))
+    await signOut()
+    expect(sb.signOut).toHaveBeenCalled()
+  })
+  it('still signs out when removal hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      push.remove.mockReturnValue(new Promise(() => {}))
+      const p = signOut()
+      await vi.advanceTimersByTimeAsync(4000)
+      await p
+      expect(sb.signOut).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('createProfile', () => {

@@ -64,7 +64,15 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
-  await removeThisDeviceSubscription() // while the session is still valid; never throws
+  // While the session is still valid. Best-effort and time-boxed: never blocks sign-out.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([removeThisDeviceSubscription(), new Promise<void>((r) => (timer = setTimeout(r, 3500)))])
+  } catch (e) {
+    console.error('could not remove push subscription', e)
+  } finally {
+    clearTimeout(timer)
+  }
   const { error } = await supabase.auth.signOut()
   if (error) throw error
 }

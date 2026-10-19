@@ -27,11 +27,12 @@ export async function enablePushOnThisDevice(label: string): Promise<'ok' | 'den
       userVisibleOnly: true,
       applicationServerKey: keyBytes(import.meta.env.VITE_VAPID_PUBLIC_KEY as string),
     }))
-  const json = sub.toJSON()
+  const keys = sub.toJSON().keys
+  if (!keys?.p256dh || !keys.auth) throw new Error('Push subscription is missing its keys')
   const { error } = await supabase.rpc('claim_push_endpoint', {
     p_endpoint: sub.endpoint,
-    p_p256dh: json.keys?.p256dh ?? '',
-    p_auth: json.keys?.auth ?? '',
+    p_p256dh: keys.p256dh,
+    p_auth: keys.auth,
     p_label: label,
   })
   if (error) throw error
@@ -65,14 +66,42 @@ export async function getDeviceState(): Promise<DeviceState> {
   }
 }
 
-/** Sign-out helper: drop this device's row while the session is still valid. Best-effort, never throws. */
-export async function removeThisDeviceSubscription(): Promise<void> {
+const REMOVE_TIMEOUT_MS = 3000
+
+async function removeNow(): Promise<void> {
+  const reg = await navigator.serviceWorker.getRegistration()
+  const sub = (await reg?.pushManager.getSubscription()) ?? null
+  if (sub) {
+    try {
+      const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+      if (error) console.error('could not delete push subscription row', error)
+    } catch (e) {
+      console.error('could not delete push subscription row', e)
+    }
+    // Always unsubscribe: the endpoint dies (410) and the server prunes the row even if the delete failed.
+    try {
+      await sub.unsubscribe()
+    } catch (e) {
+      console.error('could not unsubscribe', e)
+    }
+  }
   try {
-    if (!supported()) return
-    const sub = await currentSubscription()
-    if (sub) await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+    for (const n of (await reg?.getNotifications()) ?? []) n.close()
+  } catch (e) {
+    console.error('could not close notifications', e)
+  }
+}
+
+/** Sign-out helper: forget this device while the session is still valid. Best-effort, never throws, ~3 s cap. */
+export async function removeThisDeviceSubscription(timeoutMs = REMOVE_TIMEOUT_MS): Promise<void> {
+  if (!supported()) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([removeNow(), new Promise<void>((resolve) => (timer = setTimeout(resolve, timeoutMs)))])
   } catch (e) {
     console.error('could not remove push subscription', e)
+  } finally {
+    clearTimeout(timer)
   }
 }
 

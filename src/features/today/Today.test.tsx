@@ -6,6 +6,8 @@ import Today from './Today'
 const api = vi.hoisted(() => ({
   setDoseStatus: vi.fn(() => Promise.resolve(null)),
   listDoses: vi.fn(),
+  closeStale: vi.fn(() => Promise.resolve()),
+  closeOne: vi.fn(() => Promise.resolve()),
 }))
 
 const med = {
@@ -23,6 +25,7 @@ vi.mock('../../data/meds', () => ({
   listMeds: () => Promise.resolve([med]),
   listSchedules: () => Promise.resolve([sched]),
 }))
+vi.mock('../../push/closeStale', () => ({ closeStaleNotifications: api.closeStale, closeDoseNotification: api.closeOne }))
 vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus }))
 
 const defaultDoses = () =>
@@ -34,6 +37,8 @@ const defaultDoses = () =>
 
 beforeEach(() => {
   api.setDoseStatus.mockClear()
+  api.closeStale.mockClear()
+  api.closeOne.mockClear()
   api.listDoses.mockReset()
   api.listDoses.mockImplementation(defaultDoses)
 })
@@ -57,6 +62,19 @@ describe('Today', () => {
     renderToday()
     expect(await screen.findByText(/Aspirin: running low/)).toBeTruthy()
     expect(await screen.findByText('Notifications are off on this device')).toBeTruthy()
+  })
+
+  it('cold open closes notifications for doses that are no longer pending', async () => {
+    renderToday()
+    await waitFor(() => expect(api.closeStale).toHaveBeenCalled())
+    expect(api.closeStale).toHaveBeenCalledWith(new Set(['d1', 'd2']))
+  })
+
+  it('marking a dose in the app closes its notification', async () => {
+    renderToday()
+    const skip = (await screen.findAllByRole('button', { name: /^Skip Aspirin/ }))[0]
+    skip.click()
+    await waitFor(() => expect(api.closeOne).toHaveBeenCalledWith('d1'))
   })
 
   it('Skip calls setDoseStatus', async () => {

@@ -7,7 +7,7 @@ import GuestBanner from '../auth/GuestBanner.tsx'
 import { isGuest } from '../auth/auth'
 import { useProfile } from '../auth/useProfile'
 import { useSession } from '../auth/useSession'
-import { closeStaleNotifications } from '../../push/closeStale'
+import { closeDoseNotification, closeStaleNotifications } from '../../push/closeStale'
 import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { localDayRange, timeLabel, todayIn } from './dayRange'
@@ -61,6 +61,7 @@ export default function Today() {
   async function act(dose: DoseEvent, status: DoseStatus) {
     try {
       await setDoseStatus(dose.id, status)
+      void closeDoseNotification(dose.id)
       const { selected: day, tz: zone } = latest.current
       if (day && zone) load(day, zone)
     } catch (e) {
@@ -84,6 +85,7 @@ export default function Today() {
         // best-effort; stale notifications are harmless
       }
     }
+    void onVisible() // cold open counts as becoming visible
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [load, refreshNotifications])
