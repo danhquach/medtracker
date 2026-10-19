@@ -25,9 +25,11 @@ export type ActionDeps = {
   apikey: string
 }
 
-const ICON = '/icon-192.png'
+/** `scope` is the SW registration scope (ends with '/'), so URLs stay correct under a sub-path deploy. */
+export const todayUrl = (scope: string): string => `${scope}today`
 
-export function notificationFromPayload(raw: Partial<PushPayload> | null | undefined): NotificationSpec {
+export function notificationFromPayload(raw: Partial<PushPayload> | null | undefined, scope = '/'): NotificationSpec {
+  const ICON = `${scope}icon-192.png`
   const p = raw ?? {}
   const title = p.title || 'MedTracker'
   const body = p.body || 'You have a reminder.'

@@ -1,6 +1,7 @@
 import type { User } from '@supabase/supabase-js'
 import { updateProfile } from '../../data/profile'
 import { removeThisDeviceSubscription } from '../../push/subscribe'
+import { appUrl } from '../../lib/basePath'
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 
@@ -17,7 +18,7 @@ export async function continueAsGuest(): Promise<void> {
  * the password is then set from Settings (see needsPasswordFinish).
  */
 export async function createProfile(email: string, password: string): Promise<'done' | 'confirm'> {
-  const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: `${location.origin}/settings?finish=1` })
+  const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: appUrl('settings?finish=1') })
   if (error) throw error
   const { error: pwError } = await supabase.auth.updateUser({ password })
   if (pwError) {

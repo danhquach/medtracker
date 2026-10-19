@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleAction, notificationFromPayload, type ActionDeps } from './swLogic'
+import { handleAction, notificationFromPayload, todayUrl, type ActionDeps } from './swLogic'
 
 const dose = { type: 'dose', tag: 'd1', title: 'Time for X', body: 'Due 8:00', actionToken: 'tok' } as const
 const refill = { type: 'refill', tag: 'refill-m1', title: 'X low', body: 'About 3 days left.' } as const
@@ -102,5 +102,17 @@ describe('handleAction', () => {
     await handleAction({ action: 'bogus', data: { type: 'dose', token: 'tok' } }, d)
     expect(d.fetch).not.toHaveBeenCalled()
     expect(d.openToday).toHaveBeenCalled()
+  })
+})
+
+describe('base-aware paths', () => {
+  it('todayUrl derives from the SW scope', () => {
+    expect(todayUrl('https://u.github.io/medtracker/')).toBe('https://u.github.io/medtracker/today')
+    expect(todayUrl('http://localhost:5173/')).toBe('http://localhost:5173/today')
+  })
+  it('icons follow the scope', () => {
+    const n = notificationFromPayload(dose, 'https://u.github.io/medtracker/')
+    expect(n.options.icon).toBe('https://u.github.io/medtracker/icon-192.png')
+    expect(n.options.badge).toBe('https://u.github.io/medtracker/icon-192.png')
   })
 })

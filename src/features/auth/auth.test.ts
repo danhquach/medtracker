@@ -94,6 +94,13 @@ describe('createProfile', () => {
     sb.updateUser.mockResolvedValueOnce({ error: null }).mockResolvedValueOnce({ error: weak })
     await expect(createProfile('a@example.com', 'x')).rejects.toBe(weak)
   })
+  it('emailRedirectTo includes the deploy base', async () => {
+    vi.stubEnv('BASE_URL', '/medtracker/')
+    sb.updateUser.mockResolvedValue({ error: null })
+    await createProfile('a@example.com', 'password123')
+    expect(sb.updateUser.mock.calls[0]?.[1]).toEqual({ emailRedirectTo: `${location.origin}/medtracker/settings?finish=1` })
+    vi.unstubAllEnvs()
+  })
   it('revokes other sessions after an immediate success', async () => {
     sb.updateUser.mockResolvedValue({ error: null })
     expect(await createProfile('a@example.com', 'password123')).toBe('done')

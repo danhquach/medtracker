@@ -52,7 +52,7 @@ npx supabase db reset --linked --yes
 
 **WARNING: TEST ONLY. This wipes the linked project. Never run it against prod.**
 
-CI: private repo with limited Actions minutes, so there are no workflows. Run tests locally.
+CI: the only workflow is the Pages deploy (`.github/workflows/pages.yml`), triggered by pushes to `main` and manually (`workflow_dispatch`); it runs unit tests only. Integration and e2e tests need secrets, so run them locally.
 
 ## Deploy (owner)
 
@@ -91,6 +91,17 @@ Steps (use a separate prod Supabase project; the free plan allows 2 projects, se
 7. Vercel: import the repo, set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. `vercel.json` handles the SPA rewrite and `sw.js` no-cache header.
 
 From the first prod deploy, migrations are append-only: change schema or cron only via a NEW migration.
+
+## Deploy to GitHub Pages
+
+Served at `https://danhquach.github.io/medtracker/` (sub-path build via `VITE_BASE=/medtracker/`; local dev and tests stay at `/`).
+
+1. The repo must be public (GitHub Pages on the free plan).
+2. Settings > Pages > Source: GitHub Actions.
+3. Settings > Secrets and variables > Actions > Variables: add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. These are public values baked into the bundle; the build fails early if any is empty.
+4. Supabase Auth: add `https://danhquach.github.io/medtracker/` to Site URL / Redirect URLs.
+5. Reminders need the Vault secrets (see Deploy steps 3 and 5) on whichever Supabase project the build points at.
+6. Push to `main` or run the "Deploy to GitHub Pages" workflow manually. `build:pages` copies `index.html` to `404.html` (SPA fallback) and adds `.nojekyll`.
 
 ## Troubleshooting reminders
 
