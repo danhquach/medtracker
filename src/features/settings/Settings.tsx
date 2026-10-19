@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listMeds, listSchedules } from '../../data/meds'
 import { getProfile, markTimeZoneChosen, updateProfile, type ProfilePatch } from '../../data/profile'
 import { supabase } from '../../lib/supabase'
@@ -6,6 +6,7 @@ import type { Profile } from '../../lib/types'
 import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled } from '../../push/subscribe'
 import { isGuest, needsPasswordFinish, signOut } from '../auth/auth'
 import CredentialsForm from '../auth/CredentialsForm'
+import LoadError from '../auth/LoadError'
 import SetPasswordForm from '../auth/SetPasswordForm'
 import { useSession } from '../auth/useSession'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
@@ -33,32 +34,49 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const device = useDeviceNotificationState()
 
-  useEffect(() => {
-    let alive = true
-    getProfile().then(
-      (p) => {
-        if (!alive) return
-        setProfile(p)
-        setNickname(p.nickname ?? '')
-      },
-      (e) => console.error('profile load failed', e),
-    )
-    return () => {
-      alive = false
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [pendingDevice, setPendingDevice] = useState(false)
+  const alive = useRef(true)
+  const saveSeq = useRef(0)
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const p = await getProfile()
+      if (!alive.current) return
+      setProfile(p)
+      setNickname(p.nickname ?? '')
+      setProfileError(null)
+    } catch (e) {
+      console.error('profile load failed', e)
+      if (alive.current) setProfileError(msg(e, 'Could not load your profile'))
     }
   }, [])
 
+  useEffect(() => {
+    alive.current = true
+    queueMicrotask(() => void loadProfile())
+    return () => {
+      alive.current = false
+    }
+  }, [loadProfile])
+
+  // Only the most recent save may write state; on failure, show what the server actually holds.
   async function save(patch: ProfilePatch, after?: () => void) {
     setError(null)
+    const seq = ++saveSeq.current
     try {
-      setProfile(await updateProfile(patch))
+      const saved = await updateProfile(patch)
+      if (seq === saveSeq.current) setProfile(saved)
       after?.()
     } catch (e) {
       setError(msg(e, 'Could not save'))
+      if (seq === saveSeq.current) await loadProfile()
     }
   }
 
   async function toggleDevice() {
+    if (pendingDevice) return
+    setPendingDevice(true)
     setError(null)
     setNotice(null)
     try {
@@ -72,6 +90,7 @@ export default function Settings() {
       setError(msg(e, 'Could not change notifications'))
     }
     device.refresh()
+    setPendingDevice(false)
   }
 
   async function sendTest() {
@@ -134,6 +153,7 @@ export default function Settings() {
       <h2>Settings</h2>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+      {profileError && !profile && <LoadError message={profileError} onRetry={() => void loadProfile()} />}
       {needsPasswordFinish(user, profile) && <SetPasswordForm />}
 
       <section className="stack" aria-labelledby="st-account">
@@ -207,7 +227,7 @@ export default function Settings() {
         )}
         {(device.state === 'on' || device.state === 'off') && (
           <label>
-            <input type="checkbox" role="switch" checked={device.state === 'on'} onChange={() => void toggleDevice()} /> Notifications
+            <input type="checkbox" role="switch" checked={device.state === 'on'} disabled={pendingDevice} onChange={() => void toggleDevice()} /> Notifications
             on this device
           </label>
         )}

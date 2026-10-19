@@ -161,6 +161,50 @@ describe('Settings', () => {
     expect(await screen.findByRole('button', { name: 'Set your password' })).toBeTruthy()
   })
 
+  it('applies only the latest of two out-of-order saves', async () => {
+    let first!: (v: unknown) => void
+    m.updateProfile.mockImplementationOnce(() => new Promise((r) => (first = r)))
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Snooze length'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('switch', { name: /suggestions/i }))
+    await waitFor(() => expect(m.updateProfile).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect((screen.getByRole('switch', { name: /suggestions/i }) as HTMLInputElement).checked).toBe(false))
+    first({ ...profile, snooze_minutes: 30, suggestions_enabled: true }) // stale row resolves last
+    await new Promise((r) => setTimeout(r, 20))
+    expect((screen.getByRole('switch', { name: /suggestions/i }) as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('ignores a second device toggle click while one is pending', async () => {
+    let done!: (v: string) => void
+    m.enablePush.mockImplementation(() => new Promise((r) => (done = r)))
+    await loaded()
+    const sw = screen.getByRole('switch', { name: /on this device/i }) as HTMLInputElement
+    fireEvent.click(sw)
+    fireEvent.click(sw)
+    expect(m.enablePush).toHaveBeenCalledTimes(1)
+    expect(sw.disabled).toBe(true)
+    done('ok')
+    await waitFor(() => expect(sw.disabled).toBe(false))
+  })
+
+  it('refetches the profile when a save fails so the UI shows server truth', async () => {
+    m.updateProfile.mockRejectedValueOnce(new Error('regenerate failed'))
+    m.getProfile.mockResolvedValueOnce(profile).mockResolvedValueOnce({ ...profile, time_zone: 'Europe/London' })
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/London' } })
+    await screen.findByRole('alert')
+    await waitFor(() => expect((screen.getByLabelText('Time zone') as HTMLSelectElement).value).toBe('Europe/London'))
+    expect(m.getProfile).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows an error with Retry when the profile cannot load', async () => {
+    m.getProfile.mockRejectedValueOnce(new Error('offline'))
+    render(<Settings />)
+    expect((await screen.findByRole('alert')).textContent).toContain('offline')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByLabelText('Snooze length')).toBeTruthy()
+  })
+
   describe('delete account', () => {
     const open = async () => {
       await loaded()

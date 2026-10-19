@@ -5,7 +5,8 @@ import { listMeds, listSchedules } from '../../data/meds'
 import type { DoseEvent, DoseStatus, Medication, Schedule } from '../../lib/types'
 import GuestBanner from '../auth/GuestBanner.tsx'
 import { isGuest } from '../auth/auth'
-import { useProfile } from '../auth/useProfile'
+import LoadError from '../auth/LoadError'
+import { useProfileState } from '../auth/useProfile'
 import { useSession } from '../auth/useSession'
 import { closeDoseNotification, closeStaleNotifications } from '../../push/closeStale'
 import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
@@ -17,7 +18,7 @@ import WeekStrip from './WeekStrip'
 const isResolved = (d: DoseEvent) => d.status === 'taken' || d.status === 'skipped'
 
 export default function Today() {
-  const profile = useProfile()
+  const { profile, error: profileError, retry: retryProfile } = useProfileState()
   const { user } = useSession()
   const { state: notifications, refresh: refreshNotifications } = useDeviceNotificationState()
   const [enableError, setEnableError] = useState<string | null>(null)
@@ -139,6 +140,7 @@ export default function Today() {
         )
       })}
       {today && selected && <WeekStrip today={today} selected={selected} onSelect={setPicked} />}
+      {profileError && !profile && <LoadError message={profileError} onRetry={retryProfile} />}
       {error && <p role="alert">{error}</p>}
       {profile && doses.length === 0 && !error && <p className="muted">Nothing scheduled for this day.</p>}
       {[...groups].map(([time, rows]) => (

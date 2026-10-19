@@ -3,9 +3,20 @@ import type { Profile } from '../lib/types'
 
 export const DEFAULT_TIME_ZONE = 'America/Toronto'
 
+async function selectProfile(id: string) {
+  return supabase.from('profiles').select('*').eq('user_id', id).single()
+}
+
+/** Loads the caller's profile; if the row is missing (PGRST116) creates a default one once. */
 export async function getProfile(): Promise<Profile> {
   const id = await currentUserId()
-  const { data, error } = await supabase.from('profiles').select('*').eq('user_id', id).single()
+  let { data, error } = await selectProfile(id)
+  if (error?.code === 'PGRST116') {
+    const { error: insertError } = await supabase.from('profiles').insert({ user_id: id })
+    // 23505: a concurrent insert won; the row exists now.
+    if (insertError && insertError.code !== '23505') throw insertError
+    ;({ data, error } = await selectProfile(id))
+  }
   if (error) throw error
   return data as Profile
 }

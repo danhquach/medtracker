@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
 
 const api = vi.hoisted(() => ({
+  profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
   setDoseStatus: vi.fn(() => Promise.resolve(null)),
   listDoses: vi.fn(),
   closeStale: vi.fn(() => Promise.resolve()),
@@ -19,7 +20,7 @@ const dose = (id: string, scheduled_for: string, status: string) => ({
   id, medication_id: 'm1', scheduled_for, status,
 })
 
-vi.mock('../auth/useProfile', () => ({ useProfile: () => ({ time_zone: 'America/Toronto' }) }))
+vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
 vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user: { is_anonymous: false } }) }))
 vi.mock('../../data/meds', () => ({
   listMeds: () => Promise.resolve([med]),
@@ -36,6 +37,7 @@ const defaultDoses = () =>
   ])
 
 beforeEach(() => {
+  api.profile = { profile: { time_zone: 'America/Toronto' }, error: null, retry: vi.fn() }
   api.setDoseStatus.mockClear()
   api.closeStale.mockClear()
   api.closeOne.mockClear()
@@ -100,5 +102,13 @@ describe('Today', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(screen.getByRole('heading', { name: '6:00 AM' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '10:00 AM' })).toBeNull()
+  })
+
+  it('shows an error with Retry when the profile fails to load', async () => {
+    api.profile = { profile: null, error: 'no profile', retry: vi.fn() }
+    renderToday()
+    expect((await screen.findByRole('alert')).textContent).toContain('no profile')
+    screen.getByRole('button', { name: 'Retry' }).click()
+    expect(api.profile.retry).toHaveBeenCalled()
   })
 })

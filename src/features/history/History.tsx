@@ -3,7 +3,8 @@ import { listDoses } from '../../data/doses'
 import { listMeds } from '../../data/meds'
 import { DEFAULT_TIME_ZONE } from '../../data/profile'
 import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
-import { useProfile } from '../auth/useProfile'
+import LoadError from '../auth/LoadError'
+import { useProfileState } from '../auth/useProfile'
 import { addDays, localDayRange, timeLabel, todayIn } from '../today/dayRange'
 
 const ICON: Record<DoseStatus, { glyph: string; label: string }> = {
@@ -30,7 +31,7 @@ const dayHeading = (date: string) =>
   )
 
 export default function History() {
-  const profile = useProfile()
+  const { profile, error: profileError, retry: retryProfile } = useProfileState()
   const tz = profile?.time_zone ?? DEFAULT_TIME_ZONE
   const [meds, setMeds] = useState<Medication[]>([])
   const [doses, setDoses] = useState<DoseEvent[]>([])
@@ -38,9 +39,10 @@ export default function History() {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
 
+  const hasProfile = !!profile
   const today = todayIn(tz)
   useEffect(() => {
-    if (!profile) return
+    if (!hasProfile) return
     let alive = true
     Promise.all([listMeds(), listDoses(localDayRange(addDays(today, -29), tz).from, localDayRange(today, tz).to)]).then(
       ([m, d]) => {
@@ -58,7 +60,7 @@ export default function History() {
     return () => {
       alive = false
     }
-  }, [profile, tz, today])
+  }, [hasProfile, tz, today])
 
   const active = useMemo(() => meds.filter((m) => !m.paused), [meds])
   const byMedDay = useMemo(() => {
@@ -70,6 +72,12 @@ export default function History() {
     return map
   }, [doses, tz])
 
+  if (profileError && !profile)
+    return (
+      <main>
+        <LoadError message={profileError} onRetry={retryProfile} />
+      </main>
+    )
   if (!loaded) return <main aria-busy="true" />
 
   const detail = active.find((m) => m.id === selected)

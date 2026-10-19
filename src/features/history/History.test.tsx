@@ -2,8 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import History from './History'
 
-const api = vi.hoisted(() => ({ listDoses: vi.fn(), listMeds: vi.fn() }))
-vi.mock('../auth/useProfile', () => ({ useProfile: () => ({ time_zone: 'America/Toronto' }) }))
+const api = vi.hoisted(() => ({
+  listDoses: vi.fn(),
+  listMeds: vi.fn(),
+  profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
+}))
+vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
 vi.mock('../../data/meds', () => ({ listMeds: api.listMeds }))
 vi.mock('../../data/doses', () => ({ listDoses: api.listDoses }))
 
@@ -14,6 +18,7 @@ const dose = (id: string, medication_id: string, scheduled_for: string, status: 
 
 // "today" in Toronto = 2026-10-19
 beforeEach(() => {
+  api.profile = { profile: { time_zone: 'America/Toronto' }, error: null, retry: vi.fn() }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-19T16:00:00Z'))
   api.listMeds.mockResolvedValue([med('m1', 'Aspirin'), med('m2', 'Paused med', true)])
@@ -62,5 +67,13 @@ describe('History', () => {
     const [from, to] = api.listDoses.mock.calls[0]
     expect(from).toBe('2026-09-20T04:00:00.000Z')
     expect(to).toBe('2026-10-20T04:00:00.000Z')
+  })
+
+  it('shows an error with Retry instead of a blank page when the profile fails', () => {
+    api.profile = { profile: null, error: 'no profile', retry: vi.fn() }
+    render(<History />)
+    expect(screen.getByRole('alert').textContent).toContain('no profile')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(api.profile.retry).toHaveBeenCalled()
   })
 })
