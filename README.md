@@ -52,7 +52,12 @@ npx supabase db reset --linked --yes
 
 **WARNING: TEST ONLY. This wipes the linked project. Never run it against prod.**
 
-CI: the only workflow is the Pages deploy (`.github/workflows/pages.yml`), triggered by pushes to `main` and manually (`workflow_dispatch`); it runs unit tests only. Integration and e2e tests need secrets, so run them locally.
+CI (`.github/workflows/ci.yml`) runs on pull requests and on pushes to `main` (the repo is public, so Actions minutes are free). It lints, type-checks, runs unit tests and builds. Integration and e2e tests need secrets, so run them locally. The required status check is "Lint, test, build". Deploy to GitHub Pages happens on merge to `main`.
+
+Branch and tag protection:
+
+- `main`: PR required, no force-push or deletion, squash or merge commits, stale reviews dismissed, conversations resolved, required check "Lint, test, build" (strict: branch must be up to date).
+- Tags `v*`: admins only.
 
 ## Deploy (owner)
 
@@ -101,7 +106,7 @@ Served at `https://danhquach.github.io/medtracker/` (sub-path build via `VITE_BA
 3. Settings > Secrets and variables > Actions > Variables: add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. These are public values baked into the bundle; the build fails early if any is empty.
 4. Supabase Auth: add `https://danhquach.github.io/medtracker/` to Site URL / Redirect URLs.
 5. Reminders need the Vault secrets (see Deploy steps 3 and 5) on whichever Supabase project the build points at.
-6. Push to `main` or run the "Deploy to GitHub Pages" workflow manually. `build:pages` copies `index.html` to `404.html` (SPA fallback) and adds `.nojekyll`.
+6. Merge to `main` (or run the "CI" workflow manually on `main`); the "Deploy to GitHub Pages" job publishes after the checks pass. The Pages build fails early if a variable is empty; PR builds use base `/` and need no variables. `build:pages` copies `index.html` to `404.html` (SPA fallback) and adds `.nojekyll`.
 
 ## Troubleshooting reminders
 
