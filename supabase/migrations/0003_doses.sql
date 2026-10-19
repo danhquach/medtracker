@@ -1,8 +1,11 @@
 -- Dose generation, missed rollover, status changes.
 -- All functions are security invoker (RLS applies to signed-in callers; cron runs as postgres).
 
--- Insert pending doses for [p_from, p_to] (local dates in each user's time zone). p_user null = all users.
-create function public.generate_doses_for(p_user uuid, p_from date, p_to date) returns int
+-- Insert pending doses for [p_from, p_to] (local dates in each user's time zone), only those after p_after.
+-- p_user null = all users. Internal: not executable by signed-in users (unbounded range).
+create function public.generate_doses_for(
+  p_user uuid, p_from date, p_to date, p_after timestamptz default '-infinity'
+) returns int
 language plpgsql security invoker set search_path = '' as $$
 declare
   n int;
@@ -16,6 +19,7 @@ begin
   cross join lateral (select g.ts::date as d) d
   cross join lateral unnest(s.times) as t(t)
   where (p_user is null or m.user_id = p_user)
+    and (d.d + t.t) at time zone p.time_zone > p_after
     and not m.paused
     and s.kind <> 'prn'
     and (s.start_date is null or d.d >= s.start_date)
@@ -32,19 +36,29 @@ begin
 end;
 $$;
 
--- Today and tomorrow in each user's own time zone.
+-- Today and tomorrow in each user's own time zone, future times only (no backfill of earlier today).
+-- Security definer so it can call the internal generate_doses_for; a signed-in caller is always
+-- restricted to their own rows. Cron / service role (auth.uid() null) may pass null for all users.
 create function public.generate_doses(p_user uuid default null) returns int
-language plpgsql security invoker set search_path = '' as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   r record;
   total int := 0;
   today date;
+  target uuid := case when auth.uid() is null then p_user else auth.uid() end;
 begin
   for r in
-    select user_id, time_zone from public.profiles where p_user is null or user_id = p_user
+    select p.user_id, p.time_zone
+    from public.profiles p
+    where (target is null or p.user_id = target)
+      and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p.time_zone)
   loop
-    today := (now() at time zone r.time_zone)::date;
-    total := total + public.generate_doses_for(r.user_id, today, today + 1);
+    begin
+      today := (now() at time zone r.time_zone)::date;
+      total := total + public.generate_doses_for(r.user_id, today, today + 1, now());
+    exception when others then
+      raise warning 'generate_doses skipped user %: %', r.user_id, sqlerrm;
+    end;
   end loop;
   return total;
 end;
@@ -84,6 +98,7 @@ begin
   from public.profiles p
   where p.user_id = de.user_id
     and de.status = 'pending'
+    and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p.time_zone)
     and (de.scheduled_for at time zone p.time_zone)::date < (now() at time zone p.time_zone)::date;
   get diagnostics n = row_count;
   return n;
@@ -121,7 +136,12 @@ begin
 
   update public.dose_events
   set status = p_status,
-      acted_at = case when p_status = 'pending' then null else now() end
+      acted_at = case when p_status = 'pending' then null else now() end,
+      snoozed_until = case when p_status in ('taken', 'skipped') then null else snoozed_until end,
+      notified_at = case
+        when p_status = 'pending' and scheduled_for <= now() then coalesce(notified_at, now())
+        else notified_at
+      end
   where id = p_dose
   returning * into d;
   return d;
@@ -149,8 +169,23 @@ begin
 end;
 $$;
 
+-- Reject invalid time zones (CHECK cannot subquery) so one bad row can never break batch jobs.
+create function public.validate_time_zone() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  if not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = new.time_zone) then
+    raise exception 'invalid time_zone: %', new.time_zone using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger profiles_validate_time_zone
+  before insert or update of time_zone on public.profiles
+  for each row execute function public.validate_time_zone();
+
 -- Signed-in users only (Supabase default privileges grant anon explicitly).
-revoke execute on function public.generate_doses_for(uuid, date, date) from public, anon;
+revoke execute on function public.generate_doses_for(uuid, date, date, timestamptz) from public, anon, authenticated;
 revoke execute on function public.generate_doses(uuid) from public, anon;
 revoke execute on function public.regenerate_future_doses(uuid) from public, anon;
 revoke execute on function public.regenerate_user_doses() from public, anon;
@@ -158,7 +193,6 @@ revoke execute on function public.mark_missed() from public, anon;
 revoke execute on function public.set_dose_status(uuid, text) from public, anon;
 revoke execute on function public.log_prn_dose(uuid) from public, anon;
 
-grant execute on function public.generate_doses_for(uuid, date, date) to authenticated;
 grant execute on function public.generate_doses(uuid) to authenticated;
 grant execute on function public.regenerate_future_doses(uuid) to authenticated;
 grant execute on function public.regenerate_user_doses() to authenticated;

@@ -65,7 +65,7 @@ function localHm(iso: string, tz: string) {
 }
 
 async function gen(u: U, from: string, to: string) {
-  const r = await u.client.rpc('generate_doses_for', { p_user: u.id, p_from: from, p_to: to })
+  const r = await admin().rpc('generate_doses_for', { p_user: u.id, p_from: from, p_to: to })
   expect(r.error).toBeNull()
   return r.data as number
 }
@@ -99,8 +99,12 @@ describe('generation', () => {
     const r = await a.client.rpc('generate_doses', { p_user: a.id })
     expect(r.error).toBeNull()
     const rows = await doses(med)
-    expect(rows).toHaveLength(4)
-    expect(r.data).toBeGreaterThanOrEqual(4)
+    // tomorrow's 2 rows always; today's only if still in the future (no backfill)
+    expect(rows.length).toBeGreaterThanOrEqual(2)
+    expect(rows.length).toBeLessThanOrEqual(4)
+    expect(r.data).toBeGreaterThanOrEqual(rows.length)
+    const all = await gen(a, '2099-01-01', '2099-01-01')
+    expect(all).toBeGreaterThanOrEqual(2)
   })
 
   it('weekdays [1,3] only on Mon/Wed', async () => {
@@ -164,6 +168,38 @@ describe('generation', () => {
     expect(await doses(med)).toHaveLength(0)
   })
 
+  it('authenticated cannot execute generate_doses_for', async () => {
+    const r = await a.client.rpc('generate_doses_for', {
+      p_user: a.id,
+      p_from: '2026-01-01',
+      p_to: '2026-01-02',
+    })
+    expect(r.error).not.toBeNull()
+    expect(r.error!.code).toBe('42501')
+  })
+
+  it('generate_doses never creates a past pending row (time now-1h Toronto)', async () => {
+    const c = await newUser()
+    try {
+      const past = new Date(Date.now() - 3600_000)
+      const hm = localHm(past.toISOString(), 'America/Toronto')
+      const med = await mkMed(c, {}, { kind: 'daily', times: [hm] })
+      expect((await c.client.rpc('generate_doses', { p_user: c.id })).error).toBeNull()
+      const rows = await doses(med)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.filter((r) => new Date(r.scheduled_for) <= new Date())).toHaveLength(0)
+    } finally {
+      await admin().auth.admin.deleteUser(c.id)
+    }
+  })
+
+  it('invalid time_zone is rejected', async () => {
+    const r = await a.client.from('profiles').update({ time_zone: 'Not/AZone' }).eq('user_id', a.id)
+    expect(r.error).not.toBeNull()
+    const p = await admin().from('profiles').select('time_zone').eq('user_id', a.id).single()
+    expect(p.data!.time_zone).toBe('America/Toronto')
+  })
+
   it('anon cannot execute', async () => {
     const { anon } = await import('./helpers')
     const r = await anon().rpc('mark_missed')
@@ -220,6 +256,38 @@ describe('status changes and stock', () => {
     expect(await stockOf(med)).toBeNull()
   })
 
+  it('snoozed -> taken -> pending on a past dose is not due', async () => {
+    const med = await mkMed(a, {}, null)
+    const d = await seedDose(a, med, -3600_000)
+    const sn = await a.client
+      .from('dose_events')
+      .update({ snoozed_until: new Date(Date.now() + 600_000).toISOString() })
+      .eq('id', d)
+    expect(sn.error).toBeNull()
+    const t = await setStatus(a, d, 'taken')
+    expect(t.error).toBeNull()
+    expect(t.data.snoozed_until).toBeNull()
+    const p = await setStatus(a, d, 'pending')
+    expect(p.error).toBeNull()
+    expect(p.data.notified_at).not.toBeNull()
+    expect(p.data.snoozed_until).toBeNull()
+  })
+
+  it('snoozed -> skipped clears snooze; future dose un-taken stays un-notified', async () => {
+    const med = await mkMed(a, {}, null)
+    const d1 = await seedDose(a, med, -3600_000)
+    await a.client
+      .from('dose_events')
+      .update({ snoozed_until: new Date(Date.now() + 600_000).toISOString() })
+      .eq('id', d1)
+    const s1 = await setStatus(a, d1, 'skipped')
+    expect(s1.data.snoozed_until).toBeNull()
+    const d2 = await seedDose(a, med, 3600_000)
+    await setStatus(a, d2, 'taken')
+    const p = await setStatus(a, d2, 'pending')
+    expect(p.data.notified_at).toBeNull()
+  })
+
   it("'missed' is rejected as a manual target", async () => {
     const med = await mkMed(a, {}, null)
     const d = await seedDose(a, med)
@@ -274,23 +342,27 @@ describe('regeneration and rollover', () => {
     const med = await mkMed(a, {}, { kind: 'daily', times: ['00:30', '06:00', '12:00', '18:00'] })
     expect((await a.client.rpc('generate_doses', { p_user: a.id })).error).toBeNull()
     const before = await doses(med)
-    expect(before).toHaveLength(8)
-    const taken = before[7] // tomorrow 18:00
-    const notified = before[6] // tomorrow 12:00
+    expect(before.length).toBeGreaterThanOrEqual(2)
+    const taken = before[before.length - 1] // tomorrow 18:00
+    const notified = before[before.length - 2] // tomorrow 12:00
     expect((await setStatus(a, taken.id, 'taken')).error).toBeNull()
     const n = await a.client
       .from('dose_events')
       .update({ notified_at: new Date().toISOString() })
       .eq('id', notified.id)
     expect(n.error).toBeNull()
-    const snapTaken = (await doses(med))[7]
-    const snapNotified = (await doses(med))[6]
+    const snapAll = await doses(med)
+    const snapTaken = snapAll[snapAll.length - 1]
+    const snapNotified = snapAll[snapAll.length - 2]
 
     const u = await a.client.from('schedules').update({ times: ['09:15'] }).eq('medication_id', med)
     expect(u.error).toBeNull()
     expect((await a.client.rpc('regenerate_future_doses', { p_med: med })).error).toBeNull()
 
     const after = await doses(med)
+    const beforeIds = new Set(before.map((r) => r.id))
+    const spurious = after.filter((r) => !beforeIds.has(r.id) && new Date(r.scheduled_for) <= new Date())
+    expect(spurious).toHaveLength(0)
     expect(after.find((r) => r.id === taken.id)).toEqual(snapTaken)
     expect(after.find((r) => r.id === notified.id)).toEqual(snapNotified)
     const futurePending = after.filter(
