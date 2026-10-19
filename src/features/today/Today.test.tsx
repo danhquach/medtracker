@@ -165,6 +165,38 @@ describe('Today', () => {
     await waitFor(() => expect(api.setDoseStatus).toHaveBeenCalledWith('d1', 'skipped'))
   })
 
+  it('Skip sits apart from Taken as a quiet button, away from the edge Taken holds', async () => {
+    renderToday()
+    const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
+    const skip = screen.getAllByRole('button', { name: /^Skip Aspirin/ })[0]
+    expect(skip.className).toContain('quiet')
+    expect(taken.parentElement).toBe(skip.parentElement)
+    expect(taken.parentElement!.className).toContain('dose-actions')
+    expect(skip.nextElementSibling).toBe(taken) // Taken last, at the row's edge
+  })
+
+  it('a wrong tap can be undone on Today, putting the dose back to due', async () => {
+    const saved: Record<string, string> = {}
+    api.setDoseStatus.mockImplementation((id, status) => ((saved[id] = status), Promise.resolve(null)))
+    api.listDoses.mockImplementation(() =>
+      defaultDoses().then((ds) => ds.map((d) => (saved[d.id] ? { ...d, status: saved[d.id] } : d))),
+    )
+    renderToday()
+    const skip = (await screen.findAllByRole('button', { name: /^Skip Aspirin/ }))[0]
+    act(() => skip.click())
+    const undo = await screen.findByRole('button', { name: /^Undo Skipped Aspirin/ })
+    api.closeOne.mockClear()
+    act(() => undo.click())
+    await waitFor(() => expect(api.setDoseStatus).toHaveBeenCalledWith('d1', 'pending'))
+    expect(await screen.findAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2)
+    expect(api.closeOne).not.toHaveBeenCalled()
+  })
+
+  it('a taken dose offers Undo', async () => {
+    renderToday()
+    expect(await screen.findByRole('button', { name: /^Undo Taken Aspirin/ })).toBeTruthy()
+  })
+
   it('discards a stale response when the first day switch resolves last', async () => {
     renderToday()
     await screen.findByRole('heading', { name: '9:00 AM' })

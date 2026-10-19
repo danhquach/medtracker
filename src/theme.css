@@ -312,7 +312,30 @@ button.link {
 .dose-row.is-done {
   min-height: 48px;
   color: var(--text-muted);
+}
+
+.dose-row.is-done .dose-name {
+  flex: 1;
   text-decoration: none;
+}
+
+/* Taken and Skip: full-size targets kept well apart (MT-37). */
+.dose-actions {
+  display: flex;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.dose-actions button,
+.dose-row .quiet {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* Secondary choice: no fill, muted text, so it can't be mistaken for Taken. */
+button.quiet {
+  color: var(--text-muted);
+  background: transparent;
 }
 
 .chip-low {
