@@ -24,8 +24,19 @@ export default function SetPasswordForm({ onDone }: { onDone?: () => void }) {
       <h3>Set your password</h3>
       <label>
         New password
-        <input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPw(e.target.value)} />
+        <input
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          aria-describedby="set-password-rule"
+          value={password}
+          onChange={(e) => setPw(e.target.value)}
+        />
       </label>
+      <p id="set-password-rule" className="muted hint">
+        At least 8 characters.
+      </p>
       {error && <p role="alert">{error}</p>}
       <button type="submit" className="primary">
         Set your password

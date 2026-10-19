@@ -9,7 +9,7 @@ test('sign up, add a med, take the dose, see stock and history update', async ({
   const doseTime = tomorrow ? '12:00' : '23:59'
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Create a profile' }).click()
   await page.getByLabel('Email').fill(randomEmail())
   await page.getByLabel('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Create profile' }).click()

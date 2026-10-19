@@ -6,7 +6,7 @@ test('guest data survives creating a profile and shows on a second device', asyn
   const email = randomEmail()
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'Continue without profile' }).click()
+  await page.getByRole('button', { name: 'Start now' }).click()
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Meds' }).click()
@@ -20,8 +20,7 @@ test('guest data survives creating a profile and shows on a second device', asyn
   const banner = page.getByRole('region', { name: 'Guest mode' })
   await expect(banner).toBeVisible()
 
-  await banner.getByRole('button', { name: 'Create profile' }).click()
-  await page.getByRole('button', { name: 'Create profile' }).click()
+  await banner.getByRole('link', { name: 'Create profile' }).click()
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Create profile' }).click()

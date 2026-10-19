@@ -4,9 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
 
-const renderSettings = () =>
+const renderSettings = (at = '/settings') =>
   render(
-    <MemoryRouter initialEntries={['/settings']}>
+    <MemoryRouter initialEntries={[at]}>
       <Settings />
     </MemoryRouter>,
   )
@@ -72,13 +72,13 @@ beforeEach(() => {
 
 const loaded = async () => {
   renderSettings()
-  await screen.findByLabelText('Snooze length')
+  await screen.findByLabelText(/Snooze length/)
 }
 
 describe('Settings', () => {
   it('saves the time zone and marks it as chosen', async () => {
     await loaded()
-    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/London' } })
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ time_zone: 'Europe/London' }))
     await waitFor(() => expect(m.markTimeZoneChosen).toHaveBeenCalledWith('u1'))
   })
@@ -86,20 +86,60 @@ describe('Settings', () => {
   it('does not mark the zone chosen when the save fails', async () => {
     m.updateProfile.mockRejectedValueOnce(new Error('bad zone'))
     await loaded()
-    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/London' } })
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
     expect((await screen.findByRole('alert')).textContent).toContain('bad zone')
     expect(m.markTimeZoneChosen).not.toHaveBeenCalled()
   })
 
   it('saves snooze length, suggestions toggle and nickname', async () => {
     await loaded()
-    fireEvent.change(screen.getByLabelText('Snooze length'), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText(/Snooze length/), { target: { value: '30' } })
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ snooze_minutes: 30 }))
     fireEvent.click(screen.getByRole('switch', { name: /suggestions/i }))
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ suggestions_enabled: false }))
-    fireEvent.change(screen.getByLabelText('Nickname'), { target: { value: ' Alex ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save nickname' }))
+  })
+
+  it('saves the nickname on leaving the field, with no Save button, and confirms it', async () => {
+    await loaded()
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+    const input = screen.getByLabelText(/Nickname/)
+    fireEvent.change(input, { target: { value: ' Alex ' } })
+    fireEvent.blur(input)
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ nickname: 'Alex' }))
+    expect((await screen.findByText('Saved')).closest('label')?.textContent).toContain('Nickname')
+  })
+
+  it('does not save an unchanged nickname', async () => {
+    await loaded()
+    fireEvent.blur(screen.getByLabelText(/Nickname/))
+    expect(m.updateProfile).not.toHaveBeenCalled()
+  })
+
+  it('confirms every setting with Saved next to it', async () => {
+    await loaded()
+    fireEvent.change(screen.getByLabelText(/Snooze length/), { target: { value: '30' } })
+    expect((await screen.findByText('Saved')).closest('label')?.textContent).toContain('Snooze length')
+    fireEvent.click(screen.getByRole('switch', { name: /suggestions/i }))
+    await waitFor(() => expect(screen.getByText('Saved').closest('label')?.textContent).toContain('suggestions'))
+  })
+
+  it('searches time zones and only saves a real zone; a partial entry reverts on leaving', async () => {
+    await loaded()
+    const input = screen.getByLabelText(/Time zone/) as HTMLInputElement
+    expect(input.getAttribute('list')).toBe('st-zones')
+    expect(document.querySelector('#st-zones option[value="Europe/London"]')).toBeTruthy()
+    fireEvent.change(input, { target: { value: 'Europe/Lon' } })
+    fireEvent.blur(input)
+    expect(m.updateProfile).not.toHaveBeenCalled()
+    expect(input.value).toBe('America/Toronto')
+  })
+
+  it("offers the device's detected time zone when it differs", async () => {
+    m.getProfile.mockResolvedValue({ ...profile, time_zone: 'Pacific/Auckland' })
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: `Use this device's time zone (${detected})` }))
+    await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ time_zone: detected }))
   })
 
   it('turns notifications on for this device', async () => {
@@ -126,7 +166,28 @@ describe('Settings', () => {
     expect(screen.getByText(/blocked/i)).toBeTruthy()
   })
 
+  it('marks the device switch busy while it changes', async () => {
+    m.enablePush.mockImplementation(() => new Promise(() => {}))
+    await loaded()
+    const sw = screen.getByRole('switch', { name: /on this device/i })
+    fireEvent.click(sw)
+    await waitFor(() => expect(sw.getAttribute('aria-busy')).toBe('true'))
+  })
+
+  it.each(['off', 'denied', 'unsupported'])('hides Send test notification when notifications are %s', async (state) => {
+    m.deviceState.state = state
+    await loaded()
+    expect(screen.queryByRole('button', { name: 'Send test notification' })).toBeNull()
+  })
+
+  it('hides the battery tip when the browser cannot receive notifications', async () => {
+    m.deviceState.state = 'unsupported'
+    await loaded()
+    expect(screen.queryByText(/Unrestricted/)).toBeNull()
+  })
+
   it('sends a local test notification', async () => {
+    m.deviceState.state = 'on'
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Send test notification' }))
     await waitFor(() => expect(m.showNotification).toHaveBeenCalledWith('Test', expect.any(Object)))
@@ -156,6 +217,13 @@ describe('Settings', () => {
     expect(screen.getByLabelText('Email')).toBeTruthy()
   })
 
+  it('opens the create-profile form directly from the guest banner link', async () => {
+    asUser({ is_anonymous: true })
+    renderSettings('/settings?account=create')
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.getByText('At least 8 characters.')).toBeTruthy()
+  })
+
   it('signed-in user can sign out', async () => {
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
@@ -173,7 +241,7 @@ describe('Settings', () => {
     let first!: (v: unknown) => void
     m.updateProfile.mockImplementationOnce(() => new Promise((r) => (first = r)))
     await loaded()
-    fireEvent.change(screen.getByLabelText('Snooze length'), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText(/Snooze length/), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('switch', { name: /suggestions/i }))
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledTimes(2))
     await waitFor(() => expect((screen.getByRole('switch', { name: /suggestions/i }) as HTMLInputElement).checked).toBe(false))
@@ -199,9 +267,9 @@ describe('Settings', () => {
     m.updateProfile.mockRejectedValueOnce(new Error('regenerate failed'))
     m.getProfile.mockResolvedValueOnce(profile).mockResolvedValueOnce({ ...profile, time_zone: 'Europe/London' })
     await loaded()
-    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/London' } })
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
     await screen.findByRole('alert')
-    await waitFor(() => expect((screen.getByLabelText('Time zone') as HTMLSelectElement).value).toBe('Europe/London'))
+    await waitFor(() => expect((screen.getByLabelText(/Time zone/) as HTMLInputElement).value).toBe('Europe/London'))
     expect(m.getProfile).toHaveBeenCalledTimes(2)
   })
 
@@ -210,18 +278,40 @@ describe('Settings', () => {
     renderSettings()
     expect((await screen.findByRole('alert')).textContent).toContain('offline')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByLabelText('Snooze length')).toBeTruthy()
+    expect(await screen.findByLabelText(/Snooze length/)).toBeTruthy()
   })
 
-  describe('delete account', () => {
+  describe('delete profile', () => {
     const open = async () => {
       await loaded()
-      fireEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Delete profile' }))
     }
+
+    it('sits in a separate danger section', async () => {
+      await loaded()
+      const section = screen.getByRole('region', { name: 'Danger zone' })
+      expect(section.contains(screen.getByRole('button', { name: 'Delete profile' }))).toBe(true)
+    })
+
+    it('moves focus into the dialog, keeps Tab inside, and returns focus on Escape', async () => {
+      await open()
+      const dialog = screen.getByRole('dialog', { name: 'Delete profile?' })
+      const input = screen.getByLabelText('Type DELETE to confirm')
+      expect(document.activeElement).toBe(input)
+      const cancel = screen.getByRole('button', { name: 'Cancel' })
+      cancel.focus()
+      fireEvent.keyDown(cancel, { key: 'Tab' })
+      expect(document.activeElement).toBe(input)
+      fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(cancel)
+      fireEvent.keyDown(dialog, { key: 'Escape' })
+      expect(screen.queryByRole('dialog')).toBeNull()
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Delete profile' })))
+    })
 
     it('requires typing DELETE, then deletes and signs out', async () => {
       await open()
-      const confirm = screen.getByRole('button', { name: 'Delete my account' }) as HTMLButtonElement
+      const confirm = screen.getByRole('button', { name: 'Delete my profile' }) as HTMLButtonElement
       expect(confirm.disabled).toBe(true)
       fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'delete' } })
       expect(confirm.disabled).toBe(true)
@@ -236,7 +326,7 @@ describe('Settings', () => {
       m.invoke.mockResolvedValue({ data: null, error: new Error('boom') })
       await open()
       fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Delete my account' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Delete my profile' }))
       expect((await screen.findByRole('alert')).textContent).toContain('boom')
       expect(m.signOut).not.toHaveBeenCalled()
     })
@@ -245,7 +335,7 @@ describe('Settings', () => {
       m.signOut.mockRejectedValueOnce(new Error('user gone'))
       await open()
       fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Delete my account' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Delete my profile' }))
       await waitFor(() => expect(m.localSignOut).toHaveBeenCalledWith({ scope: 'local' }))
     })
   })

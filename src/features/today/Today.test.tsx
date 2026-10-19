@@ -122,7 +122,7 @@ describe('Today', () => {
     await waitFor(() => expect(card.textContent).toContain('Notifications are off on this device'))
     expect(card.textContent).toContain('Your data is only on this device')
     expect(card.textContent).toMatch(/Aspirin: running low/)
-    expect(screen.getByRole('link', { name: 'Create profile' }).getAttribute('href')).toBe('/settings')
+    expect(screen.getByRole('link', { name: 'Create profile' }).getAttribute('href')).toBe('/settings?account=create')
     expect(screen.getByRole('link', { name: 'Update Aspirin stock' }).getAttribute('href')).toBe('/meds/m1/edit')
     const firstDose = screen.getByRole('heading', { name: '9:00 AM' })
     expect(firstDose.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
