@@ -491,6 +491,56 @@ fieldset {
   list-style: none;
   padding: 0;
 }
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.month-nav h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.month-nav button {
+  min-width: 44px;
+}
+.month-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: center;
+}
+.month-grid th {
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--text-muted);
+}
+.month-grid td {
+  padding: 2px;
+}
+.month-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 4px 0;
+}
+/* Today: coloured, bold date; the outline is kept for the picked day. */
+.month-day.is-today > span:first-child {
+  color: var(--accent-text);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.month-day-marks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.month-day-marks svg {
+  width: 12px;
+  height: 12px;
+}
 .history-item {
   display: flex;
   flex-direction: column;

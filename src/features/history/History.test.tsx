@@ -30,6 +30,11 @@ const dose = (id: string, medication_id: string, scheduled_for: string, status: 
 
 // "today" in Toronto = 2026-10-19
 beforeEach(() => {
+  const store = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+  })
   api.profile = { profile: { time_zone: 'America/Toronto' }, error: null, retry: vi.fn() }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-19T16:00:00Z'))
@@ -153,6 +158,72 @@ describe('History', () => {
     const [from, to] = api.listDoses.mock.calls[0]
     expect(from).toBe('2026-09-20T04:00:00.000Z')
     expect(to).toBe('2026-10-20T04:00:00.000Z')
+  })
+
+  it('switches to a month calendar that starts on the right weekday and loads that month', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeTruthy()
+    const firstWeek = within(screen.getByRole('table', { name: 'October 2026' })).getAllByRole('row')[1]
+    const cells = within(firstWeek).getAllByRole('cell')
+    // Oct 1 2026 is a Thursday: Sun..Wed are blank.
+    expect(cells.slice(0, 4).every((c) => c.textContent === '')).toBe(true)
+    expect(within(cells[4]).getByRole('button').textContent).toContain('1')
+    expect(screen.getByRole('button', { name: /^Sat, Oct 17: 1 Missed$/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Mon, Oct 19: 2 Taken, 1 Missed$/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Mon, Oct 12: no doses$/ })).toBeTruthy()
+    const [from, to] = api.listDoses.mock.calls.at(-1)!
+    expect(from).toBe('2026-10-01T04:00:00.000Z')
+    expect(to).toBe('2026-11-01T04:00:00.000Z')
+    expect(screen.getByRole('list', { name: 'Legend' })).toBeTruthy()
+  })
+
+  it('pages back to earlier months but not past the current one', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    expect((screen.getByRole('button', { name: 'Next month' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeTruthy()
+    const [from, to] = api.listDoses.mock.calls.at(-1)!
+    expect(from).toBe('2026-09-01T04:00:00.000Z')
+    expect(to).toBe('2026-10-01T04:00:00.000Z')
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    expect(await screen.findByRole('heading', { name: 'August 2026' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeTruthy()
+  })
+
+  it("shows a day's doses when the day is tapped", async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Mon, Oct 19:/ }))
+    const day = screen.getByRole('region', { name: 'Mon, Oct 19' })
+    const items = within(day).getAllByRole('listitem').map((li) => li.textContent?.replace(/\s+/g, ' ').trim())
+    expect(items).toEqual(['Aspirin 9:00 AM Taken', 'Paused med 9:00 AM Taken', 'Aspirin 10:00 PM Missed'])
+    fireEvent.click(screen.getByRole('button', { name: /^Mon, Oct 12:/ }))
+    expect(within(screen.getByRole('region', { name: 'Mon, Oct 12' })).getByText('No doses on this day.')).toBeTruthy()
+  })
+
+  it('remembers the chosen view', async () => {
+    const first = renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    first.unmount()
+    renderHistory()
+    expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Month' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }))
+    expect(await screen.findByRole('link', { name: 'Aspirin' })).toBeTruthy()
+  })
+
+  it('reports a failed month load', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    api.listDoses.mockRejectedValueOnce(new Error('offline'))
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('offline')
   })
 
   it('shows an error with Retry instead of a blank page when the profile fails', () => {
