@@ -152,7 +152,9 @@ const rpcs: Record<string, (a: Row) => Result> = {
   add_stock: (a) => {
     const m = db.tables.medications.find((x) => x.id === a.p_med) as unknown as Medication | undefined
     if (!m) return fail('medication not found')
-    m.stock = (m.stock ?? 0) + (a.p_qty as number)
+    const qty = a.p_qty as number
+    if (!(Number.isFinite(qty) && qty > 0)) return fail('quantity must be greater than 0')
+    m.stock = (m.stock ?? 0) + qty
     return ok(m.stock)
   },
   set_dose_status: (a) => {
