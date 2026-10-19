@@ -4,7 +4,7 @@
   /* Contrast (WCAG AA) measured against --surface unless noted. */
   --primary: #c8372d; /* filled main action; white text 5.2:1 */
   --accent-text: #ff8a7f; /* active tab, links, selected: 6.3:1 */
-  --accent-muted: #4e2a22; /* banner fill behind --text */
+  --accent-muted: #4e2a22; /* chip fill behind --text */
   --success: #6fd08c; /* 7.6:1 */
   --warning: #f2b84b; /* 8.0:1 */
   --danger: #ff8a7f; /* destructive outline + text: 6.3:1 */
@@ -187,15 +187,45 @@ input {
   padding-top: 48px;
 }
 
-.banner {
-  background: var(--accent-muted);
+.attention {
+  margin-top: 16px;
+  background: var(--surface);
+  border-left: 4px solid var(--warning);
   border-radius: 8px;
   padding: 12px;
-  margin-bottom: 12px;
 }
 
-.banner p {
+.attention h2 {
+  font-size: 1rem;
+}
+
+.attention ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attention li + li {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bg);
+}
+
+.attention p {
   margin: 0 0 8px;
+}
+
+.attention .row {
+  align-items: center;
+}
+
+.attention .low {
+  color: var(--warning);
+}
+
+.progress {
+  margin: 0 0 12px;
+  color: var(--text-muted);
 }
 
 .chip {
@@ -253,9 +283,10 @@ input {
   font-size: 0.85rem;
 }
 
-.resolved summary {
-  cursor: pointer;
-  margin-bottom: 8px;
+.dose-row.is-done {
+  min-height: 48px;
+  color: var(--text-muted);
+  text-decoration: none;
 }
 
 .chip-low {

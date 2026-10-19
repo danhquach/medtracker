@@ -49,3 +49,16 @@ export function weekAround(centre: string): string[] {
 export function timeLabel(iso: string, tz: string): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
 }
+
+/** The `?date=` a non-today view carries, when it is a real YYYY-MM-DD; otherwise null (today). */
+export function dayParam(raw: string | null): string | null {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+  return addDays(raw, 0) === raw ? raw : null
+}
+
+const titleFormat = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** Header title for a picked day, e.g. "Tue, Oct 20". */
+export function dayTitle(date: string): string {
+  return titleFormat.format(new Date(`${date}T12:00:00Z`))
+}

@@ -1,11 +1,13 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
 
 const api = vi.hoisted(() => ({
   profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
-  setDoseStatus: vi.fn(() => Promise.resolve(null)),
+  setDoseStatus: vi.fn((_id: string, _status: string) => Promise.resolve(null)),
+  guest: false,
+  meds: [] as unknown[],
   listDoses: vi.fn(),
   closeStale: vi.fn(() => Promise.resolve()),
   closeOne: vi.fn(() => Promise.resolve()),
@@ -16,14 +18,14 @@ const med = {
   refill_threshold_days: 7, paused: false,
 }
 const sched = { medication_id: 'm1', kind: 'daily', times: ['09:00:00'], weekdays: null, interval_days: null }
-const dose = (id: string, scheduled_for: string, status: string) => ({
-  id, medication_id: 'm1', scheduled_for, status,
+const dose = (id: string, scheduled_for: string, status: string, acted_at: string | null = null) => ({
+  id, medication_id: 'm1', scheduled_for, status, acted_at,
 })
 
 vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
-vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user: { is_anonymous: false } }) }))
+vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user: { is_anonymous: api.guest } }) }))
 vi.mock('../../data/meds', () => ({
-  listMeds: () => Promise.resolve([med]),
+  listMeds: () => Promise.resolve(api.meds),
   listSchedules: () => Promise.resolve([sched]),
 }))
 vi.mock('../../push/closeStale', () => ({ closeStaleNotifications: api.closeStale, closeDoseNotification: api.closeOne }))
@@ -33,37 +35,106 @@ const defaultDoses = () =>
   Promise.resolve([
     dose('d1', '2026-10-19T13:00:00Z', 'pending'),
     dose('d2', '2026-10-19T13:00:00Z', 'pending'),
-    dose('d3', '2026-10-19T17:00:00Z', 'taken'),
+    dose('d3', '2026-10-19T17:00:00Z', 'taken', '2026-10-19T17:02:00Z'),
   ])
 
 beforeEach(() => {
   api.profile = { profile: { time_zone: 'America/Toronto' }, error: null, retry: vi.fn() }
-  api.setDoseStatus.mockClear()
+  api.guest = false
+  api.meds = [med]
+  api.setDoseStatus.mockReset()
+  api.setDoseStatus.mockImplementation(() => Promise.resolve(null))
   api.closeStale.mockClear()
   api.closeOne.mockClear()
   api.listDoses.mockReset()
   api.listDoses.mockImplementation(defaultDoses)
 })
 
+function Where() {
+  const { pathname, search } = useLocation()
+  return <output data-testid="where">{pathname + search}</output>
+}
+
 const renderToday = () =>
   render(
-    <MemoryRouter>
-      <Today />
+    <MemoryRouter initialEntries={['/today']}>
+      <Routes>
+        <Route path="/today" element={<Today />} />
+        <Route path="*" element={null} />
+      </Routes>
+      <Where />
     </MemoryRouter>,
   )
+const where = () => screen.getByTestId('where').textContent
 
 describe('Today', () => {
-  it('groups open doses by local time and collapses resolved ones', async () => {
+  it('groups doses by local time; a taken dose stays in place and links to its History', async () => {
     renderToday()
     expect(await screen.findByRole('heading', { name: '9:00 AM' })).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(3)
-    expect(screen.getByText('Resolved (1)')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '1:00 PM' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2)
+    const done = screen.getByRole('link', { name: /Aspirin 81 mg.*Taken 1:02 PM/ })
+    expect(done.getAttribute('href')).toBe('/history/m1')
+    expect(screen.getByText('1 of 3 taken')).toBeTruthy()
   })
 
-  it('shows refill chip and notifications banner', async () => {
+  it('Taken is the primary action and applies before the server answers', async () => {
+    let finish!: () => void
+    api.setDoseStatus.mockImplementation(() => new Promise((r) => (finish = () => r(null))))
     renderToday()
-    expect(await screen.findByText(/Aspirin: running low/)).toBeTruthy()
-    expect(await screen.findByText('Notifications are off on this device')).toBeTruthy()
+    const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
+    expect(taken.className).toContain('primary')
+    expect(screen.getAllByRole('button', { name: /^Skip Aspirin/ })[0].className).not.toContain('primary')
+    act(() => taken.click())
+    expect(await screen.findByText('2 of 3 taken')).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: /Taken/ })).toHaveLength(2)
+    expect(api.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    finish()
+  })
+
+  it('a failed Taken shows an error and reloads the real state', async () => {
+    api.setDoseStatus.mockImplementation(() => Promise.reject(new Error('offline')))
+    renderToday()
+    const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
+    taken.click()
+    expect((await screen.findByRole('alert')).textContent).toContain('offline')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2))
+  })
+
+  it('shows statuses in sentence case', async () => {
+    api.listDoses.mockImplementation(() => Promise.resolve([dose('m', '2026-10-19T13:00:00Z', 'missed')]))
+    renderToday()
+    expect(await screen.findByText('Missed')).toBeTruthy()
+  })
+
+  it('collects guest, notifications and low stock into one Needs attention card after the doses', async () => {
+    api.guest = true
+    renderToday()
+    const card = await screen.findByRole('region', { name: 'Needs attention' })
+    await waitFor(() => expect(card.textContent).toContain('Notifications are off on this device'))
+    expect(card.textContent).toContain('Your data is only on this device')
+    expect(card.textContent).toMatch(/Aspirin: running low/)
+    expect(screen.getByRole('link', { name: 'Create profile' }).getAttribute('href')).toBe('/settings')
+    expect(screen.getByRole('link', { name: 'Update Aspirin stock' }).getAttribute('href')).toBe('/meds/m1/edit')
+    const firstDose = screen.getByRole('heading', { name: '9:00 AM' })
+    expect(firstDose.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('picking another day puts it in the URL; picking today clears it', async () => {
+    renderToday()
+    await screen.findByRole('heading', { name: '9:00 AM' })
+    const days = screen.getByRole('group', { name: 'Week' }).querySelectorAll('button')
+    ;(days[4] as HTMLButtonElement).click()
+    await waitFor(() => expect(where()).toMatch(/^\/today\?date=\d{4}-\d{2}-\d{2}$/))
+    ;(days[3] as HTMLButtonElement).click()
+    await waitFor(() => expect(where()).toBe('/today'))
+  })
+
+  it('a new user with no meds is offered Add a med', async () => {
+    api.meds = []
+    api.listDoses.mockImplementation(() => Promise.resolve([]))
+    renderToday()
+    expect((await screen.findByRole('link', { name: 'Add a med' })).getAttribute('href')).toBe('/meds/new')
   })
 
   it('cold open closes notifications for doses that are no longer pending', async () => {

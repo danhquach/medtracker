@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { localDayRange } from './dayRange'
+import { dayParam, dayTitle, localDayRange } from './dayRange'
 
 const iso = (s: string) => new Date(s).toISOString()
 const hours = (r: { from: string; to: string }) => (Date.parse(r.to) - Date.parse(r.from)) / 3_600_000
@@ -35,5 +35,17 @@ describe('day helpers', () => {
     expect(weekAround('2026-10-19')).toEqual([
       '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22',
     ])
+  })
+})
+
+describe('dayParam / dayTitle', () => {
+  it('accepts a real date and rejects junk or impossible dates', () => {
+    expect(dayParam('2026-10-20')).toBe('2026-10-20')
+    expect(dayParam(null)).toBeNull()
+    expect(dayParam('tomorrow')).toBeNull()
+    expect(dayParam('2026-02-30')).toBeNull()
+  })
+  it('formats a day for the header', () => {
+    expect(dayTitle('2026-10-20')).toBe('Tue, Oct 20')
   })
 })
