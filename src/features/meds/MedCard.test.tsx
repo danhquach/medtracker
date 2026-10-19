@@ -15,7 +15,7 @@ const sch = (p: Partial<Schedule>): Schedule => ({
 })
 const noop = () => {}
 const card = (m: Medication, s: Schedule[], over: Partial<Parameters<typeof MedCard>[0]> = {}) =>
-  render(<ul><MedCard med={m} schedules={s} onEdit={noop} onDelete={noop} onPause={noop} onLogDose={noop} onRefill={noop} {...over} /></ul>)
+  render(<ul><MedCard med={m} schedules={s} onEdit={noop} onDelete={noop} onPause={noop} onLogDose={noop} onRefill={noop} onHistory={noop} {...over} /></ul>)
 
 describe('scheduleSummary', () => {
   it('formats every kind', () => {
@@ -107,5 +107,12 @@ describe('MedCard', () => {
     card(med({ paused: true }), [sch({})], { onPause })
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
     expect(onPause).toHaveBeenCalledWith(false)
+  })
+
+  it('opens the med history from the More menu', () => {
+    const onHistory = vi.fn()
+    card(med(), [sch({})], { onHistory })
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(onHistory).toHaveBeenCalled()
   })
 })

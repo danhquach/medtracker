@@ -78,6 +78,14 @@ describe('Today', () => {
     expect(screen.getByText('1 of 3 taken')).toBeTruthy()
   })
 
+  it('a due dose links to its med history by name', async () => {
+    renderToday()
+    const links = await screen.findAllByRole('link', { name: 'Aspirin 81 mg' })
+    expect(links).toHaveLength(2)
+    act(() => links[0].click())
+    expect(where()).toBe('/history/m1')
+  })
+
   it('Taken is the primary action and applies before the server answers', async () => {
     let finish!: () => void
     api.setDoseStatus.mockImplementation(() => new Promise((r) => (finish = () => r(null))))
