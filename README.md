@@ -104,7 +104,7 @@ Served at `https://danhquach.github.io/medtracker/` (sub-path build via `VITE_BA
 1. The repo must be public (GitHub Pages on the free plan).
 2. Settings > Pages > Source: GitHub Actions.
 3. Settings > Secrets and variables > Actions > Variables: add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. These are public values baked into the bundle; the build fails early if any is empty.
-4. Supabase Auth: add `https://danhquach.github.io/medtracker/` to Site URL / Redirect URLs.
+4. Supabase Auth: set Site URL to `https://danhquach.github.io/medtracker/` and add `https://danhquach.github.io/medtracker/**` to Redirect URLs (wildcard so `settings?finish=1` matches).
 5. Reminders need the Vault secrets (see Deploy steps 3 and 5) on whichever Supabase project the build points at.
 6. Merge to `main` (or run the "CI" workflow manually on `main`); the "Deploy to GitHub Pages" job publishes after the checks pass. The Pages build fails early if a variable is empty; PR builds use base `/` and need no variables. `build:pages` copies `index.html` to `404.html` (SPA fallback) and adds `.nojekyll`.
 
