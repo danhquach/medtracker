@@ -23,7 +23,8 @@ export default function Today() {
   const { state: notifications, refresh: refreshNotifications } = useDeviceNotificationState()
   const [enableError, setEnableError] = useState<string | null>(null)
   const tz = profile?.time_zone
-  const today = useMemo(() => (tz ? todayIn(tz) : null), [tz])
+  const [clock, setClock] = useState(() => Date.now())
+  const today = useMemo(() => (tz ? todayIn(tz, clock) : null), [tz, clock])
   const [picked, setPicked] = useState<string | null>(null)
   const selected = picked ?? today
   const [meds, setMeds] = useState<Medication[]>([])
@@ -31,11 +32,34 @@ export default function Today() {
   const [doses, setDoses] = useState<DoseEvent[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const latest = useRef({ selected, tz })
+  const latest = useRef({ selected, tz, today, picked })
   const requestId = useRef(0)
   useEffect(() => {
-    latest.current = { selected, tz }
+    latest.current = { selected, tz, today, picked }
   })
+
+  // The app can stay open across midnight: re-read the clock; a view parked on the old today follows.
+  const rollover = useCallback(() => {
+    const { tz: zone, today: old, picked: p } = latest.current
+    const now = Date.now()
+    if (zone && old && todayIn(zone, now) !== old && p === old) setPicked(null)
+    setClock(now)
+  }, [])
+
+  useEffect(() => {
+    if (!tz) return
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => {
+      const now = Date.now()
+      const untilMidnight = Date.parse(localDayRange(todayIn(tz, now), tz).to) - now
+      timer = setTimeout(() => {
+        rollover()
+        schedule()
+      }, untilMidnight + 100)
+    }
+    schedule()
+    return () => clearTimeout(timer)
+  }, [tz, rollover])
 
   // Only the most recent request may write state.
   const load = useCallback((day: string, zone: string) => {
@@ -75,6 +99,7 @@ export default function Today() {
   useEffect(() => {
     async function onVisible() {
       if (document.visibilityState !== 'visible') return
+      rollover()
       const { selected: day, tz: zone } = latest.current
       if (day && zone) load(day, zone)
       refreshNotifications()
@@ -89,7 +114,7 @@ export default function Today() {
     void onVisible() // cold open counts as becoming visible
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [load, refreshNotifications])
+  }, [load, refreshNotifications, rollover])
 
   async function turnOn() {
     setEnableError(null)

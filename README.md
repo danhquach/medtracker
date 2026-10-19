@@ -70,7 +70,11 @@ Steps (use a separate prod Supabase project; the free plan allows 2 projects, se
    ```sh
    npx supabase db push
    ```
-3. Set Edge Function secrets
+3. Generate VAPID keys, then set Edge Function secrets. Generate with:
+   ```sh
+   npx web-push generate-vapid-keys
+   ```
+   The public key goes in `VAPID_PUBLIC_KEY` (secrets below) and in `VITE_VAPID_PUBLIC_KEY` (Vercel env, step 7). The private key goes only in `VAPID_PRIVATE_KEY` (secrets below); never commit it or put it in a `VITE_` variable. `ACTION_TOKEN_KEY` and `CRON_SECRET` are new random values.
    ```sh
    npx supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:... CRON_SECRET=... ACTION_TOKEN_KEY=...
    ```
@@ -78,11 +82,26 @@ Steps (use a separate prod Supabase project; the free plan allows 2 projects, se
    ```sh
    npx supabase functions deploy
    ```
-5. Create Vault secrets `project_url` (`https://<project-ref>.supabase.co`) and `cron_secret` (same value as the `CRON_SECRET` above, a NEW value for prod). The cron `send-reminders` job is a no-op until both exist.
+5. Create the Vault secrets in the SQL editor of the PROD project only (placeholders below; `<new-random-secret>` must equal the `CRON_SECRET` set in step 3). The cron `send-reminders` job is a no-op until both exist.
+   ```sql
+   select vault.create_secret('<https://project-ref.supabase.co>', 'project_url');
+   select vault.create_secret('<new-random-secret>', 'cron_secret');
+   ```
 6. Dashboard: turn ON email confirmation and anonymous sign-ins. Set Site URL and redirect URLs to the Vercel domain (`createProfile` redirects to `${origin}/settings?finish=1`).
 7. Vercel: import the repo, set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. `vercel.json` handles the SPA rewrite and `sw.js` no-cache header.
 
 From the first prod deploy, migrations are append-only: change schema or cron only via a NEW migration.
+
+## Troubleshooting reminders
+
+Reminders not arriving:
+- Supabase dashboard > Edge Functions > `send-reminders` > Logs. The function returns HTTP 500 (with the run counts as JSON) when any send/claim step errored, 200 otherwise.
+- Cron-side view of recent calls (SQL editor):
+  ```sql
+  select status_code, content from net._http_response order by created desc limit 20;
+  ```
+  `401` = `cron_secret` Vault value differs from the `CRON_SECRET` function secret; `500` = misconfigured secrets or errors in the run; no rows = Vault secrets missing or cron job not scheduled.
+- Doses more than 12 hours overdue are intentionally not sent.
 
 ## Installing the app
 

@@ -19,6 +19,7 @@ begin
     where de.status = 'pending'
       and m.notify
       and not m.paused
+      and coalesce(de.snoozed_until, de.scheduled_for) > now() - interval '12 hours'
       and ((de.notified_at is null and de.scheduled_for <= now()) or de.snoozed_until <= now())
     order by de.scheduled_for
     limit greatest(p_limit, 0)

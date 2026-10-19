@@ -28,7 +28,7 @@ begin
       s.kind = 'daily'
       or (s.kind = 'weekdays' and extract(isodow from d.d)::int = any (s.weekdays))
       or (s.kind = 'interval' and s.start_date is not null and s.interval_days > 0
-          and (d.d - s.start_date) % s.interval_days = 0)
+          and (d.d - s.start_date) % nullif(s.interval_days, 0) = 0)
     )
   on conflict (medication_id, scheduled_for) do nothing;
   get diagnostics n = row_count;
@@ -107,6 +107,7 @@ begin
   from public.profiles p
   where p.user_id = de.user_id
     and de.status = 'pending'
+    and (de.snoozed_until is null or de.snoozed_until <= now())
     and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p.time_zone)
     and (de.scheduled_for at time zone p.time_zone)::date < (now() at time zone p.time_zone)::date;
   get diagnostics n = row_count;

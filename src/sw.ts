@@ -29,7 +29,6 @@ sw.addEventListener('push', (e: PushEv) => {
   } catch {
     return
   }
-  if (!payload?.title) return
   const n = notificationFromPayload(payload)
   e.waitUntil(sw.registration.showNotification(n.title, n.options))
 })

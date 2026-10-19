@@ -21,6 +21,15 @@ describe('notificationFromPayload', () => {
     })
   })
 
+  it('missing title/body falls back to a generic notification', () => {
+    const n = notificationFromPayload({ type: 'dose', tag: 'd1' } as never)
+    expect(n.title).toBe('MedTracker')
+    expect(n.options.body).toBe('You have a reminder.')
+    const m = notificationFromPayload(null)
+    expect(m.title).toBe('MedTracker')
+    expect(m.options.body).toBe('You have a reminder.')
+  })
+
   it('refill: no actions, no token', () => {
     const n = notificationFromPayload(refill)
     expect(n.options.actions).toBeUndefined()

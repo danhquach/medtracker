@@ -76,7 +76,8 @@ Deno.serve(async (req) => {
         if (error) throw error
       },
     })
-    return Response.json(result)
+    // Non-2xx surfaces partial failures in net._http_response / function logs.
+    return Response.json(result, { status: result.errors > 0 ? 500 : 200 })
   } catch (e) {
     return new Response(`run failed: ${(e as Error).message}`, { status: 500 })
   }

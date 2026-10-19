@@ -27,11 +27,14 @@ export type ActionDeps = {
 
 const ICON = '/icon-192.png'
 
-export function notificationFromPayload(p: PushPayload): NotificationSpec {
-  const base = { body: p.body, tag: p.tag, icon: ICON, badge: ICON }
+export function notificationFromPayload(raw: Partial<PushPayload> | null | undefined): NotificationSpec {
+  const p = raw ?? {}
+  const title = p.title || 'MedTracker'
+  const body = p.body || 'You have a reminder.'
+  const base = { body, tag: p.tag ?? 'medtracker', icon: ICON, badge: ICON }
   if (p.type === 'dose') {
     return {
-      title: p.title,
+      title,
       options: {
         ...base,
         data: { type: 'dose', token: p.actionToken },
@@ -44,7 +47,7 @@ export function notificationFromPayload(p: PushPayload): NotificationSpec {
       },
     }
   }
-  return { title: p.title, options: { ...base, data: { type: 'refill' } } }
+  return { title, options: { ...base, data: { type: 'refill' } } }
 }
 
 /** Action button -> POST to dose-action; anything else (body tap, failure) -> open Today. */

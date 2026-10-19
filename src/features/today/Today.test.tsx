@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
 
 const api = vi.hoisted(() => ({
@@ -110,5 +110,59 @@ describe('Today', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('no profile')
     screen.getByRole('button', { name: 'Retry' }).click()
     expect(api.profile.retry).toHaveBeenCalled()
+  })
+
+  describe('crossing local midnight while open', () => {
+    // 2026-10-19 23:59:30 in Toronto (EDT, UTC-4)
+    beforeEach(() => vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: new Date('2026-10-20T03:59:30Z') }))
+    afterEach(() => vi.useRealTimers())
+
+    // ignore the 72h notification-cleanup query; keep the one-day view queries
+    const lastFrom = () =>
+      (api.listDoses.mock.calls as unknown as string[][])
+        .filter(([f, t]) => Date.parse(t) - Date.parse(f) <= 25 * 3_600_000)
+        .at(-1)![0]
+
+    it('moves to the new day when the user had not picked another day', async () => {
+      renderToday()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(lastFrom()).toBe('2026-10-19T04:00:00.000Z')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000) // past midnight
+      })
+      expect(lastFrom()).toBe('2026-10-20T04:00:00.000Z')
+    })
+
+    it('keeps a day the user picked explicitly', async () => {
+      renderToday()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      const days = screen.getByRole('group', { name: 'Week' }).querySelectorAll('button')
+      await act(async () => {
+        ;(days[0] as HTMLButtonElement).click() // Oct 16
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(lastFrom()).toBe('2026-10-16T04:00:00.000Z')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000)
+      })
+      expect(lastFrom()).toBe('2026-10-16T04:00:00.000Z')
+    })
+
+    it('re-reads the clock when the tab becomes visible again', async () => {
+      renderToday()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      vi.setSystemTime(new Date('2026-10-20T10:00:00Z')) // timers throttled while hidden: no midnight tick
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(lastFrom()).toBe('2026-10-20T04:00:00.000Z')
+    })
   })
 })

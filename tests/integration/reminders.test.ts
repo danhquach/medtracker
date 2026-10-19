@@ -58,6 +58,13 @@ describe('claim_due_doses', () => {
     expect(row.data!.snoozed_until).toBeNull()
   })
 
+  it('staleness bound: 13h-overdue dose not claimed, 1h-overdue is', async () => {
+    const med = await mkMed(a)
+    await mkDose(a, med, { scheduled_for: ago(13 * 60) })
+    const fresh = await mkDose(a, med, { scheduled_for: ago(60) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([fresh])
+  })
+
   it('skips future, paused, notify=false, already-acted', async () => {
     const future = await mkMed(b)
     await mkDose(b, future, { scheduled_for: new Date(Date.now() + 3_600_000).toISOString() })

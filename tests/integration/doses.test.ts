@@ -127,6 +127,16 @@ describe('generation', () => {
     ])
   })
 
+  it('interval_days = 0 never raises and generates nothing', async () => {
+    const med = await mkMed(
+      a,
+      {},
+      { kind: 'interval', times: ['08:00'], interval_days: 0, start_date: '2026-11-02' },
+    )
+    expect(await gen(a, '2026-11-01', '2026-11-10')).toBeGreaterThanOrEqual(0)
+    expect(await doses(med)).toHaveLength(0)
+  })
+
   it('end_date excludes later days; start_date excludes earlier', async () => {
     const med = await mkMed(
       a,
@@ -382,6 +392,21 @@ describe('regeneration and rollover', () => {
     const rows = await doses(med)
     expect(rows.find((x) => x.id === old)!.status).toBe('missed')
     expect(rows.find((x) => x.id === today)!.status).toBe('pending')
+  })
+
+  it('mark_missed skips a yesterday dose that is snoozed into the future', async () => {
+    const med = await mkMed(a, {}, null)
+    const snoozed = await seedDose(a, med, -30 * 3600_000)
+    const plain = await seedDose(a, med, -31 * 3600_000)
+    const up = await admin()
+      .from('dose_events')
+      .update({ snoozed_until: new Date(Date.now() + 3_600_000).toISOString() })
+      .eq('id', snoozed)
+    expect(up.error).toBeNull()
+    expect((await a.client.rpc('mark_missed')).error).toBeNull()
+    const rows = await doses(med)
+    expect(rows.find((x) => x.id === snoozed)!.status).toBe('pending')
+    expect(rows.find((x) => x.id === plain)!.status).toBe('missed')
   })
 
   it("mark_missed by user B does not change A's rows", async () => {
