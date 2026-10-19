@@ -83,6 +83,43 @@ describe('claim_due_doses', () => {
     expect(row.data!.snoozed_until).toBeNull()
   })
 
+  it('concurrent claims never return the same dose twice', async () => {
+    const med = await mkMed(a)
+    const ids = [await mkDose(a, med, { scheduled_for: ago(40) }), await mkDose(a, med, { scheduled_for: ago(41) }), await mkDose(a, med, { scheduled_for: ago(42) })]
+    const [r1, r2] = await Promise.all([admin().rpc('claim_due_doses'), admin().rpc('claim_due_doses')])
+    expect(r1.error).toBeNull()
+    expect(r2.error).toBeNull()
+    const union = [...r1.data, ...r2.data].map((x: { dose_id: string }) => x.dose_id).filter((id) => ids.includes(id))
+    expect(union.sort()).toEqual([...ids].sort())
+  })
+
+  it('snoozed dose then marked taken is not re-claimed', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { notified_at: ago(4), snoozed_until: ago(1) })
+    expect((await a.client.rpc('set_dose_status', { p_dose: dose, p_status: 'taken' })).error).toBeNull()
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('p_limit caps the claim', async () => {
+    const med = await mkMed(a)
+    const ids = [await mkDose(a, med, { scheduled_for: ago(50) }), await mkDose(a, med, { scheduled_for: ago(51) })]
+    const r = await admin().rpc('claim_due_doses', { p_limit: 1 })
+    expect(r.error).toBeNull()
+    expect(r.data).toHaveLength(1)
+    expect(r.data.length + (await claim(a)).length).toBeGreaterThanOrEqual(1)
+    expect(ids).toHaveLength(2)
+  })
+
+  it('unclaim_doses makes a claimed dose due again; not callable by users', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    expect((await a.client.rpc('unclaim_doses', { p_ids: [dose] })).error).not.toBeNull()
+    expect((await anon().rpc('unclaim_doses', { p_ids: [dose] })).error).not.toBeNull()
+    expect((await admin().rpc('unclaim_doses', { p_ids: [dose] })).error).toBeNull()
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+  })
+
   it('orders by scheduled_for', async () => {
     const med = await mkMed(a)
     const late = await mkDose(a, med, { scheduled_for: ago(2) })

@@ -8,7 +8,7 @@ export default defineConfig({
     setupFiles: ['src/test-setup.ts'],
     include: [
       'src/**/*.test.{ts,tsx}',
-      'supabase/functions/_shared/{refill,actionToken,pushPolicy}.test.ts',
+      'supabase/functions/_shared/{refill,actionToken,pushPolicy,reminderRun}.test.ts',
     ],
   },
 })

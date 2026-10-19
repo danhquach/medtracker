@@ -1,8 +1,9 @@
 -- Reminder claiming and snooze.
 
 -- Atomically claim due doses for sending: concurrent runs never claim the same dose.
--- Re-checks notify/paused at claim time. Service role / cron only.
-create function public.claim_due_doses()
+-- Re-checks notify/paused at claim time; at most p_limit per call (backlog drains on later runs).
+-- Service role / cron only.
+create function public.claim_due_doses(p_limit int default 50)
 returns table (
   dose_id uuid, user_id uuid, medication_id uuid, med_name text, strength text, scheduled_for timestamptz
 )
@@ -19,6 +20,7 @@ begin
       and not m.paused
       and ((de.notified_at is null and de.scheduled_for <= now()) or de.snoozed_until <= now())
     order by de.scheduled_for
+    limit greatest(p_limit, 0)
     for update of de skip locked
   ),
   upd as (
@@ -53,6 +55,22 @@ begin
 end;
 $$;
 
-revoke execute on function public.claim_due_doses() from public, anon, authenticated;
+-- Give claimed doses back to the queue after a transient send failure (notified_at null + scheduled_for
+-- in the past makes them due again, snoozed ones included). Service role only.
+create function public.unclaim_doses(p_ids uuid[]) returns int
+language plpgsql security invoker set search_path = '' as $$
+declare
+  n int;
+begin
+  update public.dose_events
+  set notified_at = null
+  where id = any (p_ids) and status = 'pending';
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+revoke execute on function public.claim_due_doses(int) from public, anon, authenticated;
+revoke execute on function public.unclaim_doses(uuid[]) from public, anon, authenticated;
 revoke execute on function public.snooze_dose(uuid, int) from public, anon;
 grant execute on function public.snooze_dose(uuid, int) to authenticated;

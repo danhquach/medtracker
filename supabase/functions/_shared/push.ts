@@ -1,13 +1,15 @@
 import webpush from 'npm:web-push@3.6.7'
 import { classifyPushStatus, isAllowedPushEndpoint } from './pushPolicy.ts'
+import type { PushPayload, SendResult } from './reminderRun.ts'
 
+export type { PushPayload }
 export type PushSubRow = { id: string; endpoint: string; p256dh: string; auth: string }
 
-export type PushPayload =
-  | { type: 'dose'; tag: string; title: string; body: string; actionToken: string }
-  | { type: 'refill'; tag: string; title: string; body: string }
-
 let configured = false
+
+export function vapidConfigured(): boolean {
+  return ['VAPID_SUBJECT', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'].every((k) => !!Deno.env.get(k))
+}
 
 function configure() {
   if (configured) return
@@ -19,10 +21,10 @@ function configure() {
   configured = true
 }
 
-// 'gone' = the push service says the subscription is dead (caller deletes it).
-// Endpoints outside the allowlist are never contacted (SSRF guard) and count as 'error'.
-export async function sendPush(sub: PushSubRow, payload: PushPayload): Promise<'ok' | 'gone' | 'error'> {
-  if (!isAllowedPushEndpoint(sub.endpoint)) return 'error'
+// 'gone' = dead subscription (caller deletes it). 'disallowed' = endpoint outside the allowlist, never
+// contacted (SSRF guard, row kept). 'error' = transient (network, 401/403/429/5xx): caller may retry.
+export async function sendPush(sub: PushSubRow, payload: PushPayload): Promise<SendResult> {
+  if (!isAllowedPushEndpoint(sub.endpoint)) return 'disallowed'
   try {
     configure()
     await webpush.sendNotification(
