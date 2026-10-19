@@ -97,9 +97,12 @@ export default function MedForm({
     setAttempt((n) => n + 1)
     if (Object.keys(validateMed(draft, drafts)).length > 0) return
     setSaving(true)
+    // Untouched stock on edit is left out, so a refill or dose taken while the form was open isn't overwritten.
+    const { stock: newStock, ...input } = toMedInput(draft)
+    const stockChanged = !med || stock !== (med.stock?.toString() ?? '')
     try {
       await onSave(
-        { ...toMedInput(draft), ...(med ? { id: med.id } : {}) },
+        { ...input, ...(stockChanged ? { stock: newStock } : {}), ...(med ? { id: med.id } : {}) },
         drafts.map(toScheduleInput),
       )
     } catch (err) {

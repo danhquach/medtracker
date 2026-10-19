@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Suggestion } from '../autocomplete/sources'
+import type { Medication } from '../../lib/types'
 
 type Group = { items: Suggestion[]; state: 'idle' | 'loading' | 'error' | 'done' }
 const sugg = vi.hoisted(() => ({
@@ -144,6 +145,42 @@ describe('MedForm', () => {
     expect(screen.getByLabelText('Amount per dose (mL)')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Form'), { target: { value: 'capsule' } })
     expect(screen.getByLabelText('Stock (capsules)')).toBeTruthy()
+  })
+
+  describe('editing keeps stock changed elsewhere (MT-11)', () => {
+    const existing: Medication = {
+      id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,
+      stock: 10, refill_threshold_days: 7, notify: true, paused: false, refill_alerted_at: null,
+      created_at: '2026-10-19T00:00:00Z', updated_at: '2026-10-19T00:00:00Z',
+    }
+    const renderEdit = () =>
+      render(<MedForm med={existing} meds={[existing]} remoteSuggestions today="2026-10-19" onSave={onSave} onCancel={onCancel} />)
+    const savedMed = () => onSave.mock.calls[0]?.[0] as Record<string, unknown>
+
+    it('leaves stock out of the save when the field was not changed', async () => {
+      renderEdit()
+      type('Notes', 'with food')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', notes: 'with food' })
+      expect(savedMed()).not.toHaveProperty('stock')
+    })
+
+    it('sends stock when the user changed it', async () => {
+      renderEdit()
+      type('Stock (tablets)', '30')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', stock: 30 })
+    })
+
+    it('sends stock when the user cleared it to stop tracking', async () => {
+      renderEdit()
+      type('Stock (tablets)', '')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', stock: null })
+    })
   })
 
   it('surfaces a save failure in an alert', async () => {
