@@ -56,7 +56,7 @@ describe('Today', () => {
   it('shows refill chip and notifications banner', async () => {
     renderToday()
     expect(await screen.findByText(/Aspirin: running low/)).toBeTruthy()
-    expect(screen.getByText('Notifications are off on this device')).toBeTruthy()
+    expect(await screen.findByText('Notifications are off on this device')).toBeTruthy()
   })
 
   it('Skip calls setDoseStatus', async () => {

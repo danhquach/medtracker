@@ -7,6 +7,8 @@ import GuestBanner from '../auth/GuestBanner.tsx'
 import { isGuest } from '../auth/auth'
 import { useProfile } from '../auth/useProfile'
 import { useSession } from '../auth/useSession'
+import { closeStaleNotifications } from '../../push/closeStale'
+import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { localDayRange, timeLabel, todayIn } from './dayRange'
 import DoseRow from './DoseRow'
@@ -17,7 +19,8 @@ const isResolved = (d: DoseEvent) => d.status === 'taken' || d.status === 'skipp
 export default function Today() {
   const profile = useProfile()
   const { user } = useSession()
-  const notifications = useDeviceNotificationState()
+  const { state: notifications, refresh: refreshNotifications } = useDeviceNotificationState()
+  const [enableError, setEnableError] = useState<string | null>(null)
   const tz = profile?.time_zone
   const today = useMemo(() => (tz ? todayIn(tz) : null), [tz])
   const [picked, setPicked] = useState<string | null>(null)
@@ -65,6 +68,36 @@ export default function Today() {
     }
   }
 
+  // Coming back to the app: refresh, then drop notifications for doses that are no longer pending
+  // (e.g. marked Taken on another device). Pending set is independent of the selected day.
+  useEffect(() => {
+    async function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      const { selected: day, tz: zone } = latest.current
+      if (day && zone) load(day, zone)
+      refreshNotifications()
+      try {
+        const now = Date.now()
+        const recent = await listDoses(new Date(now - 48 * 3_600_000).toISOString(), new Date(now + 24 * 3_600_000).toISOString())
+        await closeStaleNotifications(new Set(recent.filter((d) => d.status === 'pending').map((d) => d.id)))
+      } catch {
+        // best-effort; stale notifications are harmless
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [load, refreshNotifications])
+
+  async function turnOn() {
+    setEnableError(null)
+    try {
+      await enablePushOnThisDevice(deviceLabel())
+    } catch (e) {
+      setEnableError(e instanceof Error ? e.message : 'Could not turn on notifications')
+    }
+    refreshNotifications()
+  }
+
   const medById = new Map(meds.map((m) => [m.id, m]))
   const open = doses.filter((d) => !isResolved(d))
   const resolved = doses.filter(isResolved)
@@ -82,9 +115,16 @@ export default function Today() {
     <main>
       <h2>Today</h2>
       <GuestBanner guest={isGuest(user)} />
-      {notifications !== 'on' && (
+      {notifications !== null && notifications !== 'on' && (
         <section className="banner" aria-label="Notifications">
           <p>Notifications are off on this device</p>
+          {notifications === 'off' && (
+            <button type="button" onClick={turnOn}>
+              Turn on
+            </button>
+          )}
+          {notifications === 'denied' && <p>Notifications are blocked. Enable them for this site in your browser settings.</p>}
+          {enableError && <p role="alert">{enableError}</p>}
         </section>
       )}
       {lowMeds.map((m) => {

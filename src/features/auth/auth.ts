@@ -1,5 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { updateProfile } from '../../data/profile'
+import { removeThisDeviceSubscription } from '../../push/subscribe'
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 
@@ -63,6 +64,7 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  await removeThisDeviceSubscription() // while the session is still valid; never throws
   const { error } = await supabase.auth.signOut()
   if (error) throw error
 }

@@ -1,8 +1,13 @@
-export type DeviceNotificationState = 'unsupported' | 'denied' | 'off' | 'on'
+import { useCallback, useEffect, useState } from 'react'
+import { getDeviceState, type DeviceState } from '../../push/subscribe'
 
-/** Stub: permission only. Task 9 adds the push-subscription check. */
-export function useDeviceNotificationState(): DeviceNotificationState {
-  if (typeof Notification === 'undefined') return 'unsupported'
-  if (Notification.permission === 'granted') return 'on'
-  return Notification.permission === 'denied' ? 'denied' : 'off'
+export type DeviceNotificationState = DeviceState
+
+export function useDeviceNotificationState(): { state: DeviceNotificationState | null; refresh: () => void } {
+  const [state, setState] = useState<DeviceNotificationState | null>(null)
+  const refresh = useCallback(() => {
+    void getDeviceState().then(setState, () => setState('off'))
+  }, [])
+  useEffect(refresh, [refresh])
+  return { state, refresh }
 }
