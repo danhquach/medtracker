@@ -1,0 +1,47 @@
+name: Update behind PRs
+
+# The protect-main ruleset requires PR branches to be up to date with main,
+# so auto-merge stalls whenever main moves. This merges main into every open
+# PR that has auto-merge enabled, which reruns CI and lets auto-merge finish.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-behind-prs
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Update auto-merge PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update branches
+        env:
+          # A PAT, not GITHUB_TOKEN: pushes made with GITHUB_TOKEN do not
+          # trigger CI, so the required check would never run.
+          # Fine-grained, this repo only: Contents + Pull requests read/write.
+          GH_TOKEN: ${{ secrets.AUTO_UPDATE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret AUTO_UPDATE_TOKEN is missing. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          prs=$(gh pr list --base main --state open --json number,autoMergeRequest \
+            --jq '.[] | select(.autoMergeRequest != null) | .number')
+          for pr in $prs; do
+            behind=$(gh api "repos/$GH_REPO/compare/main...refs/pull/$pr/head" --jq .behind_by)
+            if [ "$behind" = "0" ]; then
+              echo "#$pr is up to date"
+              continue
+            fi
+            echo "#$pr is $behind commit(s) behind; updating"
+            gh api -X PUT "repos/$GH_REPO/pulls/$pr/update-branch" --silent \
+              || echo "::warning::Could not update #$pr (merge conflict?)"
+          done
