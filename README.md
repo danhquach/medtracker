@@ -4,20 +4,20 @@ Medication reminder PWA. Vite + React + TypeScript; Supabase (Postgres + RLS, SQ
 
 ## Local setup
 
-Local dev and tests use a hosted Supabase **TEST** project (no Docker).
+There is one hosted Supabase project and it is **PRODUCTION** (GitHub issue #10). `npm run dev` with `.env.local` reads and writes production data. A separate test project or local Docker setup comes later.
 
 ```sh
 npm install
 ```
 
-Test project settings: anonymous sign-ins ON, email confirmation OFF (test only, never in prod).
+Production auth settings: anonymous sign-ins ON (guest mode), email confirmation ON.
 
 ### Environment files (all gitignored)
 
 | File | Variables | Template |
 |---|---|---|
 | `.env.local` | `VITE_SUPABASE_URL` (`https://<project-ref>.supabase.co`), `VITE_SUPABASE_ANON_KEY` (publishable key), `VITE_VAPID_PUBLIC_KEY` | `.env.example` |
-| `.env.test` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DB_PASSWORD` (quote it), `ACTION_TOKEN_KEY`, `CRON_SECRET` | none; see names here |
+| `.env.test` | `SUPABASE_ENV` (`test` only for a dedicated test project), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DB_PASSWORD` (quote it), `ACTION_TOKEN_KEY`, `CRON_SECRET` | none; see names here |
 | `supabase/functions/.env` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`, `ACTION_TOKEN_KEY` | `supabase/functions/.env.example` |
 
 Never commit real values.
@@ -38,7 +38,7 @@ npm test
 npm run test:int
 ```
 
-Hits the TEST project.
+Integration and e2e tests create and delete users. They refuse to run unless `.env.test` sets `SUPABASE_ENV=test`. Set that only when `.env.test` points at a dedicated test project, never at production.
 
 ```sh
 npm run test:e2e
@@ -50,7 +50,7 @@ Chromium only.
 npx supabase db reset --linked --yes
 ```
 
-**WARNING: TEST ONLY. This wipes the linked project. Never run it against prod.**
+**WARNING: this wipes the linked project. The linked project is production, so do not run it until a separate test project exists.**
 
 CI (`.github/workflows/ci.yml`) runs on pull requests and on pushes to `main` (the repo is public, so Actions minutes are free). It lints, type-checks, runs unit tests and builds. Integration and e2e tests need secrets, so run them locally. The required status check is "Lint, test, build". Deploy to GitHub Pages happens on merge to `main`.
 
@@ -65,7 +65,7 @@ Pre-deploy security checklist:
 - [ ] `anon` / `authenticated` have no SELECT on `net.http_request_queue` or `net._http_response`.
 - [ ] Prod secrets (VAPID keys, `ACTION_TOKEN_KEY`, `CRON_SECRET`) are new and distinct from local/test ones.
 
-Steps (use a separate prod Supabase project; the free plan allows 2 projects, see GitHub issue #10):
+Steps (the existing project is production, see GitHub issue #10; check each step against it, since some were done while it was the test project):
 
 1. Link the project
    ```sh

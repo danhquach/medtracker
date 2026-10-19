@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
+import { assertTestProject } from './tests/guard'
+
+assertTestProject()
 
 export default defineConfig({
   testDir: 'tests/e2e',

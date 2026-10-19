@@ -1,5 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { loadEnv } from 'vite'
+import { assertTestProject } from '../guard'
+
+assertTestProject()
 
 const env = loadEnv('test', process.cwd(), '')
 
