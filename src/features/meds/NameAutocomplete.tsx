@@ -17,7 +17,9 @@ export default function NameAutocomplete({
   remoteEnabled: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const { mine, ca, us } = useSuggestions(value, meds, remoteEnabled)
+  // Only text the user typed is searched; stored or picked names are never sent anywhere.
+  const [typed, setTyped] = useState('')
+  const { mine, ca, us } = useSuggestions(typed, meds, remoteEnabled)
 
   const groups = [
     { title: 'Your meds', items: mine, state: 'done' as const },
@@ -34,6 +36,7 @@ export default function NameAutocomplete({
           autoComplete="off"
           onChange={(e) => {
             onChange(e.target.value)
+            setTyped(e.target.value)
             setOpen(true)
           }}
         />
@@ -56,6 +59,7 @@ export default function NameAutocomplete({
                       type="button"
                       onClick={() => {
                         onPick(s)
+                        setTyped('')
                         setOpen(false)
                       }}
                     >
