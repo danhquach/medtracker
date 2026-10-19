@@ -37,7 +37,7 @@ export default function NeedsAttention({
           <li>
             <p>Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
             <div className="row">
-              <Link to="/settings">Create profile</Link>
+              <Link to="/settings?account=create">Create profile</Link>
               <button
                 type="button"
                 onClick={() => {

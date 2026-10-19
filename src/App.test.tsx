@@ -115,19 +115,19 @@ describe('App (routes and header)', () => {
 })
 
 describe('App (auth gate)', () => {
-  it('no session → Welcome with three buttons, no tab bar', () => {
+  it('no session → Welcome leads with Start now, then Sign in, then Create a profile; no tab bar', () => {
     session.value = { loading: false, user: null }
     renderAt('/today')
-    for (const name of ['Create profile', 'Sign in', 'Continue without profile']) {
-      expect(screen.getByRole('button', { name })).toBeTruthy()
-    }
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Start now', 'Sign in', 'Create a profile'])
+    expect(screen.getByRole('button', { name: 'Start now' }).className).toContain('primary')
+    expect(screen.getByText(/stays on this device until you create a profile/)).toBeTruthy()
     expect(screen.queryByRole('link', { name: 'Meds' })).toBeNull()
   })
 
-  it('Continue without profile starts a guest session', () => {
+  it('Start now starts a guest session', () => {
     session.value = { loading: false, user: null }
     renderAt('/today')
-    screen.getByRole('button', { name: 'Continue without profile' }).click()
+    screen.getByRole('button', { name: 'Start now' }).click()
     expect(auth.continueAsGuest).toHaveBeenCalled()
   })
 })
