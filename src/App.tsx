@@ -1,4 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { bootSession } from './data/boot'
+import Welcome from './features/auth/Welcome'
+import { useSession } from './features/auth/useSession'
+import SettingsStub from './features/settings/SettingsStub'
+import Today from './features/today/Today'
 import './theme.css'
 
 const Page = ({ title }: { title: string }) => (
@@ -7,7 +13,26 @@ const Page = ({ title }: { title: string }) => (
   </main>
 )
 
+function useBoot(userId: string | undefined): boolean {
+  const [readyFor, setReadyFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!userId) return
+    let alive = true
+    void bootSession().finally(() => alive && setReadyFor(userId))
+    return () => {
+      alive = false
+    }
+  }, [userId])
+  return !!userId && readyFor === userId
+}
+
 export default function App() {
+  const { loading, user } = useSession()
+  const ready = useBoot(user?.id)
+
+  if (loading) return <main aria-busy="true" />
+  if (!user) return <Welcome />
+
   return (
     <>
       <header className="app-header">
@@ -16,13 +41,17 @@ export default function App() {
           ⚙
         </NavLink>
       </header>
-      <Routes>
-        <Route path="/" element={<Navigate to="/today" replace />} />
-        <Route path="/today" element={<Page title="Today" />} />
-        <Route path="/meds" element={<Page title="Meds" />} />
-        <Route path="/history" element={<Page title="History" />} />
-        <Route path="/settings" element={<Page title="Settings" />} />
-      </Routes>
+      {ready ? (
+        <Routes>
+          <Route path="/" element={<Navigate to="/today" replace />} />
+          <Route path="/today" element={<Today />} />
+          <Route path="/meds" element={<Page title="Meds" />} />
+          <Route path="/history" element={<Page title="History" />} />
+          <Route path="/settings" element={<SettingsStub />} />
+        </Routes>
+      ) : (
+        <main aria-busy="true" />
+      )}
       <nav className="tab-bar">
         <NavLink to="/today">Today</NavLink>
         <NavLink to="/meds">Meds</NavLink>
