@@ -214,6 +214,10 @@ Behaviour (builder's calls):
   every 15 minutes and also called right after any med/schedule/time-zone
   edit. Insert is idempotent (unique key). No backfill of older days: if the
   system was down, those days simply have no rows. *(Builder's call.)*
+- Exception (MT-39): saving a med also creates today's already-passed doses
+  for times that are new to that med (all times for a new med), so they can be
+  marked Taken or Skip. They are created already notified, so no reminder is
+  sent. Cron, boot, pause and time zone changes still create future doses only.
 - Editing a schedule, pausing, or changing time zone deletes and regenerates
   only rows that are `pending`, `scheduled_for > now()`, and not yet
   notified. Anything already notified or acted on is left alone.
