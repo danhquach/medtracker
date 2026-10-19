@@ -9,3 +9,18 @@ test-results/
 supabase/.temp/
 supabase/.branches/
 .DS_Store
+
+# create-vite
+logs
+*.log
+npm-debug.log*
+dist-ssr
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
