@@ -395,3 +395,108 @@ fieldset {
   max-height: 60vh;
   overflow-y: auto;
 }
+
+.field-error {
+  margin: -4px 0 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+details:not(.menu) > summary::before {
+  content: '▸';
+  width: 1.2em;
+}
+
+details[open]:not(.menu) > summary::before {
+  content: '▾';
+}
+
+details.more > summary {
+  color: var(--accent-text);
+}
+
+/* Save stays on screen however long the form gets. */
+.form-actions {
+  position: sticky;
+  bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
+  margin: 0 -16px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--surface);
+}
+
+.notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--success);
+  background: var(--surface);
+  border-radius: 8px;
+}
+
+/* Stays in the tree while empty so screen readers announce the next message. */
+.notice:empty {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.card-actions {
+  align-items: flex-start;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  list-style: none;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-items {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.menu-items button {
+  text-align: left;
+  border-color: transparent;
+}
+
+.menu-items button.danger {
+  border-color: var(--danger);
+}
+
+.menu-items hr {
+  width: 100%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}

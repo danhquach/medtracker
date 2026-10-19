@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { refillState } from '../../../supabase/functions/_shared/refill'
 import type { Medication, Schedule } from '../../lib/types'
-import { scheduleSummary } from './summary'
+import { scheduleSummary, stockUnit } from './summary'
 
 export default function MedCard({
   med,
@@ -22,9 +22,18 @@ export default function MedCard({
 }) {
   const [refilling, setRefilling] = useState(false)
   const [qty, setQty] = useState('')
+  const menu = useRef<HTMLDetailsElement>(null)
   const low = refillState(med, schedules) === 'low'
   const qtyNum = Number(qty)
-  const isPrn = schedules.some((s) => s.kind === 'prn')
+  // As-needed meds lead with Log dose; everything else leads with Edit.
+  const logFirst = schedules.some((s) => s.kind === 'prn') && !med.paused
+  const unit = stockUnit(med.form, 2)
+
+  /** Run a menu item and close the menu. */
+  const choose = (action: () => void) => () => {
+    if (menu.current) menu.current.open = false
+    action()
+  }
 
   return (
     <li className={`med-card${med.paused ? ' is-paused' : ''}`}>
@@ -33,30 +42,46 @@ export default function MedCard({
         {med.strength && <span className="muted"> {med.strength}</span>}
       </div>
       <div className="muted">{scheduleSummary(schedules)}</div>
-      {med.stock !== null && (
-        <span className={`chip${low ? ' chip-low' : ''}`}>
-          {med.stock} {med.stock === 1 ? 'pill' : 'pills'} left
-        </span>
+      {(med.stock !== null || med.paused) && (
+        <div>
+          {med.stock !== null && (
+            <span className={`chip${low ? ' chip-low' : ''}`}>
+              {med.stock} {stockUnit(med.form, med.stock)} left
+            </span>
+          )}
+          {med.paused && <span className="chip">Paused</span>}
+        </div>
       )}
-      {med.paused && <span className="chip">Paused</span>}
-      <div className="row">
-        <button type="button" aria-pressed={med.paused} onClick={() => onPause(!med.paused)}>
-          {med.paused ? 'Resume' : 'Pause'}
-        </button>
-        {isPrn && !med.paused && (
+      <div className="row card-actions">
+        {logFirst ? (
           <button type="button" onClick={onLogDose}>
             Log dose
           </button>
+        ) : (
+          <button type="button" onClick={onEdit}>
+            Edit
+          </button>
         )}
-        <button type="button" onClick={() => setRefilling(true)}>
-          Refilled
-        </button>
-        <button type="button" onClick={onEdit}>
-          Edit
-        </button>
-        <button type="button" className="danger" onClick={onDelete}>
-          Delete
-        </button>
+        <details className="menu" ref={menu}>
+          <summary aria-label={`More actions for ${med.name}`}>More</summary>
+          <div className="menu-items">
+            {logFirst && (
+              <button type="button" onClick={choose(onEdit)}>
+                Edit
+              </button>
+            )}
+            <button type="button" onClick={choose(() => onPause(!med.paused))}>
+              {med.paused ? 'Resume' : 'Pause'}
+            </button>
+            <button type="button" onClick={choose(() => setRefilling(true))}>
+              Refilled
+            </button>
+            <hr />
+            <button type="button" className="danger" onClick={choose(onDelete)}>
+              Delete…
+            </button>
+          </div>
+        </details>
       </div>
       {refilling && (
         <form
@@ -69,7 +94,15 @@ export default function MedCard({
             setQty('')
           }}
         >
-          <input type="number" inputMode="decimal" step="any" min={0} aria-label="Quantity added" value={qty} onChange={(e) => setQty(e.target.value)} />
+          <input
+            type="number"
+            inputMode="decimal"
+            step="any"
+            min={0}
+            aria-label={`Quantity added (${unit})`}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
           <button type="submit" className="primary" disabled={!(qtyNum > 0)}>
             Add
           </button>

@@ -41,6 +41,13 @@ export function todayIn(tz: string, now: number = Date.now()): string {
   )
 }
 
+/** The current 'HH:MM' (24h) in tz. */
+export function nowTimeIn(tz: string, now: number = Date.now()): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(
+    new Date(now),
+  )
+}
+
 /** 7 days centred on `centre`. */
 export function weekAround(centre: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(centre, i - 3))
