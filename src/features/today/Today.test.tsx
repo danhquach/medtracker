@@ -3,7 +3,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
 
-const api = vi.hoisted(() => ({ setDoseStatus: vi.fn(() => Promise.resolve(null)) }))
+const api = vi.hoisted(() => ({
+  setDoseStatus: vi.fn(() => Promise.resolve(null)),
+  listDoses: vi.fn(),
+}))
 
 const med = {
   id: 'm1', name: 'Aspirin', strength: '81 mg', stock: 3, units_per_dose: 1,
@@ -20,17 +23,20 @@ vi.mock('../../data/meds', () => ({
   listMeds: () => Promise.resolve([med]),
   listSchedules: () => Promise.resolve([sched]),
 }))
-vi.mock('../../data/doses', () => ({
-  listDoses: () =>
-    Promise.resolve([
-      dose('d1', '2026-10-19T13:00:00Z', 'pending'),
-      dose('d2', '2026-10-19T13:00:00Z', 'pending'),
-      dose('d3', '2026-10-19T17:00:00Z', 'taken'),
-    ]),
-  setDoseStatus: api.setDoseStatus,
-}))
+vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus }))
 
-beforeEach(() => api.setDoseStatus.mockClear())
+const defaultDoses = () =>
+  Promise.resolve([
+    dose('d1', '2026-10-19T13:00:00Z', 'pending'),
+    dose('d2', '2026-10-19T13:00:00Z', 'pending'),
+    dose('d3', '2026-10-19T17:00:00Z', 'taken'),
+  ])
+
+beforeEach(() => {
+  api.setDoseStatus.mockClear()
+  api.listDoses.mockReset()
+  api.listDoses.mockImplementation(defaultDoses)
+})
 
 const renderToday = () =>
   render(
@@ -58,5 +64,23 @@ describe('Today', () => {
     const skip = (await screen.findAllByRole('button', { name: /^Skip Aspirin/ }))[0]
     skip.click()
     await waitFor(() => expect(api.setDoseStatus).toHaveBeenCalledWith('d1', 'skipped'))
+  })
+
+  it('discards a stale response when the first day switch resolves last', async () => {
+    renderToday()
+    await screen.findByRole('heading', { name: '9:00 AM' })
+    const resolvers: Array<(v: unknown[]) => void> = []
+    api.listDoses.mockImplementation(() => new Promise((r) => resolvers.push(r)))
+    const days = screen.getByRole('group', { name: 'Week' }).querySelectorAll('button')
+    ;(days[0] as HTMLButtonElement).click()
+    await waitFor(() => expect(resolvers).toHaveLength(1))
+    ;(days[1] as HTMLButtonElement).click()
+    await waitFor(() => expect(resolvers).toHaveLength(2))
+    resolvers[1]([dose('b1', '2026-10-20T10:00:00Z', 'pending')]) // second day answers first
+    expect(await screen.findByRole('heading', { name: '6:00 AM' })).toBeTruthy()
+    resolvers[0]([dose('a1', '2026-10-19T14:00:00Z', 'pending')]) // stale first answer
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByRole('heading', { name: '6:00 AM' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '10:00 AM' })).toBeNull()
   })
 })

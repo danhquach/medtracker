@@ -19,9 +19,33 @@ export async function createProfile(email: string, password: string): Promise<'d
   const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: `${location.origin}/settings?finish=1` })
   if (error) throw error
   const { error: pwError } = await supabase.auth.updateUser({ password })
-  if (pwError) return 'confirm'
+  if (pwError) {
+    if (isEmailPendingError(pwError)) return 'confirm'
+    throw pwError
+  }
   await updateProfile({ password_set: true })
+  await revokeOtherSessions()
   return 'done'
+}
+
+/**
+ * The only expected password failure right after an email link: the new email is not confirmed yet.
+ * Matched on GoTrue error code `email_not_confirmed`, or a message that says the email must be
+ * confirmed/verified. Anything else (weak password, network, rate limit) is rethrown.
+ * NOTE: code/message not verified against the hosted project's pending-confirmation response.
+ */
+export function isEmailPendingError(e: { code?: string; message?: string }): boolean {
+  return e.code === 'email_not_confirmed' || /email.*(confirm|verif)|(confirm|verif).*email/i.test(e.message ?? '')
+}
+
+/** Invalidate the old anonymous refresh tokens. Never undoes the already-successful password set. */
+async function revokeOtherSessions(): Promise<void> {
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'others' })
+    if (error) console.error('could not revoke other sessions', error)
+  } catch (e) {
+    console.error('could not revoke other sessions', e)
+  }
 }
 
 /** Returns true when a session exists (confirmations off); false when email confirmation is pending. */
@@ -47,6 +71,7 @@ export async function setPassword(password: string): Promise<void> {
   const { error } = await supabase.auth.updateUser({ password })
   if (error) throw error
   await updateProfile({ password_set: true })
+  await revokeOtherSessions()
 }
 
 export const isGuest = (user: User | null | undefined): boolean => !!user?.is_anonymous

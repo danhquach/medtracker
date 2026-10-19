@@ -30,10 +30,33 @@ export async function touchLastSeen(): Promise<void> {
   if (error) throw error
 }
 
-/** First load: if the zone is still the default, adopt the browser's. */
+const tzKey = (userId: string) => `tzDetected:${userId}`
+
+function isTimeZoneMarked(userId: string): boolean {
+  try {
+    return localStorage.getItem(tzKey(userId)) !== null
+  } catch {
+    return false
+  }
+}
+
+/** Settings calls this when the user saves a zone, so auto-detect never overrides it. */
+export function markTimeZoneChosen(userId: string): void {
+  try {
+    localStorage.setItem(tzKey(userId), '1')
+  } catch {
+    // storage unavailable
+  }
+}
+
+/** Once per user per device: if the zone is still the default, adopt the browser's. */
 export async function detectTimeZone(): Promise<void> {
+  const id = await currentUserId()
+  if (isTimeZoneMarked(id)) return
   const profile = await getProfile()
-  if (profile.time_zone !== DEFAULT_TIME_ZONE) return
-  const browser = Intl.DateTimeFormat().resolvedOptions().timeZone
-  if (browser && browser !== DEFAULT_TIME_ZONE) await updateProfile({ time_zone: browser })
+  if (profile.time_zone === DEFAULT_TIME_ZONE) {
+    const browser = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (browser && browser !== DEFAULT_TIME_ZONE) await updateProfile({ time_zone: browser })
+  }
+  markTimeZoneChosen(id)
 }

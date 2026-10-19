@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { avgDosesPerDay, daysLeft, refillState } from '../../../supabase/functions/_shared/refill'
 import { listDoses, setDoseStatus } from '../../data/doses'
 import { listMeds, listSchedules } from '../../data/meds'
@@ -27,28 +27,39 @@ export default function Today() {
   const [doses, setDoses] = useState<DoseEvent[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
-    if (!tz || !selected) return
-    try {
-      const { from, to } = localDayRange(selected, tz)
-      const [m, s, d] = await Promise.all([listMeds(), listSchedules(), listDoses(from, to)])
-      setMeds(m)
-      setSchedules(s)
-      setDoses(d)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load doses')
-    }
-  }, [tz, selected])
+  const latest = useRef({ selected, tz })
+  const requestId = useRef(0)
+  useEffect(() => {
+    latest.current = { selected, tz }
+  })
+
+  // Only the most recent request may write state.
+  const load = useCallback((day: string, zone: string) => {
+    const id = ++requestId.current
+    const { from, to } = localDayRange(day, zone)
+    Promise.all([listMeds(), listSchedules(), listDoses(from, to)]).then(
+      ([m, s, d]) => {
+        if (id !== requestId.current) return
+        setMeds(m)
+        setSchedules(s)
+        setDoses(d)
+        setError(null)
+      },
+      (e: unknown) => {
+        if (id === requestId.current) setError(e instanceof Error ? e.message : 'Could not load doses')
+      },
+    )
+  }, [])
 
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    if (tz && selected) load(selected, tz)
+  }, [tz, selected, load])
 
   async function act(dose: DoseEvent, status: DoseStatus) {
     try {
       await setDoseStatus(dose.id, status)
-      await refresh()
+      const { selected: day, tz: zone } = latest.current
+      if (day && zone) load(day, zone)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update dose')
     }
