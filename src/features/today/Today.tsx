@@ -101,7 +101,7 @@ export default function Today() {
       let failed: string | null = null
       try {
         await setDoseStatus(dose.id, status)
-        void closeDoseNotification(dose.id)
+        if (status !== 'pending') void closeDoseNotification(dose.id) // an undone dose is due again
       } catch (e) {
         failed = e instanceof Error ? e.message : 'Could not update dose'
       }
