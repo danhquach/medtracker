@@ -1,0 +1,278 @@
+:root {
+  --bg: #161616;
+  --surface: #2a2a2a;
+  --accent: #e2574c;
+  --accent-muted: #4e2a22;
+  --text: #f2f2f2;
+  --text-muted: #a0a0a0;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.app-header a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 1.25rem;
+}
+
+main {
+  padding: 16px 16px 80px;
+}
+
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab-bar a {
+  flex: 1;
+  padding: 14px 0;
+  text-align: center;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.tab-bar a.active {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+h2,
+h3 {
+  margin: 0 0 8px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-height: 44px;
+}
+
+button.primary,
+button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.welcome {
+  max-width: 420px;
+  margin: 0 auto;
+  padding-top: 48px;
+}
+
+.banner {
+  background: var(--accent-muted);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.banner p {
+  margin: 0 0 8px;
+}
+
+.chip {
+  display: inline-block;
+  margin: 0 8px 8px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  font-size: 0.9rem;
+}
+
+.week-strip {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 16px;
+}
+
+.week-strip .day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.week-strip .day.is-today {
+  border-color: var(--accent);
+}
+
+.dose-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.dose-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.status {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.resolved summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.chip-low {
+  background: var(--accent);
+}
+
+.med-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.med-card.is-paused {
+  opacity: 0.5;
+}
+
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  border-radius: 999px;
+  padding: 12px 20px;
+}
+
+select,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+}
+
+fieldset {
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+}
+
+.suggestions {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 4px;
+}
+
+.suggestions h4 {
+  margin: 4px 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.suggestions li button {
+  width: 100%;
+  text-align: left;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.history-grid {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+.history-grid th[scope='row'] {
+  text-align: left;
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}

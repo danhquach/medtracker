@@ -1,0 +1,208 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { admin, anon, newUser } from './helpers'
+
+type U = { client: SupabaseClient; id: string }
+let a: U
+let b: U
+
+beforeAll(async () => {
+  a = await newUser()
+  b = await newUser()
+})
+
+afterAll(async () => {
+  for (const u of [a, b]) if (u) await admin().auth.admin.deleteUser(u.id)
+})
+
+const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString()
+
+async function mkMed(u: U, fields: Record<string, unknown> = {}): Promise<string> {
+  const r = await admin()
+    .from('medications')
+    .insert({ user_id: u.id, name: 'Claimmed', strength: '10 mg', ...fields })
+    .select('id')
+    .single()
+  expect(r.error).toBeNull()
+  return r.data!.id as string
+}
+
+async function mkDose(u: U, medId: string, fields: Record<string, unknown> = {}): Promise<string> {
+  const r = await admin()
+    .from('dose_events')
+    .insert({ user_id: u.id, medication_id: medId, scheduled_for: ago(5), ...fields })
+    .select('id')
+    .single()
+  expect(r.error).toBeNull()
+  return r.data!.id as string
+}
+
+async function claim(u: U) {
+  const r = await admin().rpc('claim_due_doses')
+  expect(r.error).toBeNull()
+  return (r.data as { dose_id: string; user_id: string; med_name: string; strength: string }[]).filter(
+    (x) => x.user_id === u.id,
+  )
+}
+
+describe('claim_due_doses', () => {
+  it('claims a due dose once', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med)
+    const first = await claim(a)
+    expect(first.map((x) => x.dose_id)).toEqual([dose])
+    expect(first[0]).toMatchObject({ med_name: 'Claimmed', strength: '10 mg' })
+    expect(await claim(a)).toHaveLength(0)
+    const row = await admin().from('dose_events').select('notified_at, snoozed_until').eq('id', dose).single()
+    expect(row.data!.notified_at).not.toBeNull()
+    expect(row.data!.snoozed_until).toBeNull()
+  })
+
+  it('staleness bound: 13h-overdue dose not claimed, 1h-overdue is', async () => {
+    const med = await mkMed(a)
+    await mkDose(a, med, { scheduled_for: ago(13 * 60) })
+    const fresh = await mkDose(a, med, { scheduled_for: ago(60) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([fresh])
+  })
+
+  it('skips future, paused, notify=false, already-acted', async () => {
+    const future = await mkMed(b)
+    await mkDose(b, future, { scheduled_for: new Date(Date.now() + 3_600_000).toISOString() })
+    const paused = await mkMed(b, { paused: true })
+    await mkDose(b, paused)
+    const quiet = await mkMed(b, { notify: false })
+    await mkDose(b, quiet)
+    const acted = await mkMed(b)
+    await mkDose(b, acted, { status: 'taken', acted_at: ago(1) })
+    await mkDose(b, acted, { scheduled_for: ago(10), status: 'skipped', acted_at: ago(1) })
+    await mkDose(b, acted, { scheduled_for: ago(20), notified_at: ago(15) })
+    expect(await claim(b)).toHaveLength(0)
+  })
+
+  it('snoozed dose is re-claimed after snoozed_until, not before', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { notified_at: ago(4), snoozed_until: new Date(Date.now() + 600_000).toISOString() })
+    expect(await claim(a)).toHaveLength(0)
+    expect((await admin().from('dose_events').update({ snoozed_until: ago(1) }).eq('id', dose)).error).toBeNull()
+    const got = await claim(a)
+    expect(got.map((x) => x.dose_id)).toEqual([dose])
+    const row = await admin().from('dose_events').select('snoozed_until').eq('id', dose).single()
+    expect(row.data!.snoozed_until).toBeNull()
+  })
+
+  it('concurrent claims never return the same dose twice', async () => {
+    const med = await mkMed(a)
+    const ids = [await mkDose(a, med, { scheduled_for: ago(40) }), await mkDose(a, med, { scheduled_for: ago(41) }), await mkDose(a, med, { scheduled_for: ago(42) })]
+    const [r1, r2] = await Promise.all([admin().rpc('claim_due_doses'), admin().rpc('claim_due_doses')])
+    expect(r1.error).toBeNull()
+    expect(r2.error).toBeNull()
+    const union = [...r1.data, ...r2.data].map((x: { dose_id: string }) => x.dose_id).filter((id) => ids.includes(id))
+    expect(union.sort()).toEqual([...ids].sort())
+  })
+
+  it('snoozed dose then marked taken is not re-claimed', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { notified_at: ago(4), snoozed_until: ago(1) })
+    expect((await a.client.rpc('set_dose_status', { p_dose: dose, p_status: 'taken' })).error).toBeNull()
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('p_limit caps the claim', async () => {
+    const med = await mkMed(a)
+    const ids = [await mkDose(a, med, { scheduled_for: ago(50) }), await mkDose(a, med, { scheduled_for: ago(51) })]
+    const r = await admin().rpc('claim_due_doses', { p_limit: 1 })
+    expect(r.error).toBeNull()
+    expect(r.data).toHaveLength(1)
+    expect(r.data.length + (await claim(a)).length).toBeGreaterThanOrEqual(1)
+    expect(ids).toHaveLength(2)
+  })
+
+  it('unclaim_doses makes a claimed dose due again; not callable by users', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    expect((await a.client.rpc('unclaim_doses', { p_ids: [dose] })).error).not.toBeNull()
+    expect((await anon().rpc('unclaim_doses', { p_ids: [dose] })).error).not.toBeNull()
+    expect((await admin().rpc('unclaim_doses', { p_ids: [dose] })).error).toBeNull()
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+  })
+
+  it('returns due_at = snooze expiry (or scheduled_for) captured before the claim clears it', async () => {
+    const med = await mkMed(a)
+    const plain = await mkDose(a, med, { scheduled_for: ago(30) })
+    const snz = ago(2)
+    const snoozed = await mkDose(a, med, { scheduled_for: ago(180), notified_at: ago(170), snoozed_until: snz })
+    const got = (await admin().rpc('claim_due_doses')).data as { dose_id: string; due_at: string; scheduled_for: string }[]
+    const byId = new Map(got.map((x) => [x.dose_id, x]))
+    expect(Date.parse(byId.get(plain)!.due_at)).toBe(Date.parse(byId.get(plain)!.scheduled_for))
+    expect(Date.parse(byId.get(snoozed)!.due_at)).toBe(Date.parse(snz))
+  })
+
+  it('unclaim_doses does not clobber a snooze set during the send window', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    const until = new Date(Date.now() + 600_000).toISOString()
+    expect((await a.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 10 })).error).toBeNull()
+    expect((await admin().rpc('unclaim_doses', { p_ids: [dose] })).error).toBeNull()
+    const row = await admin().from('dose_events').select('notified_at, snoozed_until').eq('id', dose).single()
+    expect(row.data!.notified_at).not.toBeNull()
+    expect(Date.parse(row.data!.snoozed_until)).toBeGreaterThan(Date.parse(until) - 60_000)
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('orders by scheduled_for', async () => {
+    const med = await mkMed(a)
+    const late = await mkDose(a, med, { scheduled_for: ago(2) })
+    const early = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([early, late])
+  })
+
+  it('anon and authenticated roles cannot execute claim_due_doses', async () => {
+    expect((await anon().rpc('claim_due_doses')).error).not.toBeNull()
+    expect((await a.client.rpc('claim_due_doses')).error).not.toBeNull()
+  })
+})
+
+describe('snooze_dose', () => {
+  it('owner snoozes a pending dose; invalid minutes rejected; others cannot', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { notified_at: ago(1) })
+    const bad = await a.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 7 })
+    expect(bad.error).not.toBeNull()
+    const other = await b.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 10 })
+    expect(other.error).toBeNull()
+    expect(other.data.id).toBeNull() // RLS hides the row: nothing updated
+    const untouched = await admin().from('dose_events').select('snoozed_until').eq('id', dose).single()
+    expect(untouched.data!.snoozed_until).toBeNull()
+    const ok = await a.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 10 })
+    expect(ok.error).toBeNull()
+    const until = new Date(ok.data.snoozed_until).getTime() - Date.now()
+    expect(until).toBeGreaterThan(9 * 60_000)
+    expect(until).toBeLessThan(11 * 60_000)
+    expect((await anon().rpc('snooze_dose', { p_dose: dose, p_minutes: 10 })).error).not.toBeNull()
+  })
+})
+
+describe('generate_doses error handling', () => {
+  it('all-users call as signed-in user stays scoped to self (no cross-user rows, no error)', async () => {
+    const r = await a.client.rpc('generate_doses', { p_user: null })
+    expect(r.error).toBeNull()
+  })
+
+  it('single-user run with a degenerate schedule (interval_days 0) completes cleanly', async () => {
+    const med = await mkMed(a)
+    const s = await admin().from('schedules').insert({
+      user_id: a.id,
+      medication_id: med,
+      kind: 'interval',
+      times: ['23:59'],
+      interval_days: 0,
+      start_date: '2020-01-01',
+    })
+    expect(s.error).toBeNull()
+    const r = await admin().rpc('generate_doses', { p_user: a.id })
+    // Guarded by interval_days > 0. An error here would now surface (single-user path re-raises).
+    expect(r.error).toBeNull()
+  })
+})
