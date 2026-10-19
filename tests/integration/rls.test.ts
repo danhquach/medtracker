@@ -22,6 +22,7 @@ type Spec = {
   row: (uid: string) => Record<string, unknown>
   update: Record<string, unknown>
   preExisting?: boolean // row created by trigger, not by insert
+  adminInsert?: boolean // users have no insert grant (write path is an RPC)
 }
 
 const specs: Spec[] = [
@@ -57,8 +58,9 @@ const specs: Spec[] = [
   {
     table: 'push_subscriptions',
     pk: 'id',
-    row: (uid) => ({ user_id: uid, endpoint: `https://push.example.test/${crypto.randomUUID()}`, p256dh: 'p', auth: 'a' }),
+    row: (uid) => ({ user_id: uid, endpoint: `https://push.example.test/${crypto.randomUUID()}`, p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) }),
     update: { enabled: false },
+    adminInsert: true,
   },
 ]
 
@@ -85,7 +87,7 @@ describe('RLS isolation', () => {
           expect(data).toHaveLength(1)
           rowId = ctx.a.id
         } else {
-          const { data, error } = await ctx.a.client.from(s.table).insert(s.row(ctx.a.id)).select('*').single()
+          const { data, error } = await (s.adminInsert ? admin() : ctx.a.client).from(s.table).insert(s.row(ctx.a.id)).select('*').single()
           expect(error).toBeNull()
           rowId = (data as Record<string, string>)[s.pk]
         }
@@ -174,8 +176,8 @@ describe('integrity', () => {
   })
 
   it('http push endpoint rejected', async () => {
-    const { error } = await ctx.a.client
-      .from('push_subscriptions').insert({ user_id: ctx.a.id, endpoint: 'http://push.example.test/x', p256dh: 'p', auth: 'a' })
+    const { error } = await admin()
+      .from('push_subscriptions').insert({ user_id: ctx.a.id, endpoint: 'http://push.example.test/x', p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) })
     expect(error?.code).toBe('23514')
   })
 })
@@ -197,7 +199,7 @@ describe('trigger and cascades', () => {
     const { data: m } = await u.client.from('medications').insert({ user_id: u.id, name: 'C' }).select('id').single()
     await u.client.from('schedules').insert({ user_id: u.id, medication_id: m!.id, kind: 'daily' })
     await u.client.from('dose_events').insert({ user_id: u.id, medication_id: m!.id, scheduled_for: '2026-05-01T08:00:00Z' })
-    await u.client.from('push_subscriptions').insert({ user_id: u.id, endpoint: `https://push.example.test/${u.id}`, p256dh: 'p', auth: 'a' })
+    await admin().from('push_subscriptions').insert({ user_id: u.id, endpoint: `https://push.example.test/${u.id}`, p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) })
 
     await u.client.from('medications').delete().eq('id', m!.id)
     for (const t of ['schedules', 'dose_events']) {

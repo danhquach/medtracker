@@ -82,3 +82,28 @@ describe('claim_push_endpoint', () => {
     }
   })
 })
+
+describe('direct write path', () => {
+  const row = (uid: string) => ({ user_id: uid, endpoint: endpoint(), p256dh: P, auth: A })
+
+  it('user cannot insert directly', async () => {
+    const { error } = await a.client.from('push_subscriptions').insert(row(a.id))
+    expect(error?.code).toBe('42501')
+  })
+
+  it('user cannot update endpoint but can update enabled', async () => {
+    const e = endpoint()
+    await claim(a.client, e)
+    const bad = await a.client.from('push_subscriptions').update({ endpoint: endpoint() }).eq('endpoint', e)
+    expect(bad.error?.code).toBe('42501')
+    const ok = await a.client.from('push_subscriptions').update({ enabled: false }).eq('endpoint', e)
+    expect(ok.error).toBeNull()
+    const r = await admin().from('push_subscriptions').select('enabled').eq('endpoint', e).single()
+    expect(r.data?.enabled).toBe(false)
+  })
+
+  it('table CHECK constraints reject bad shapes even for admin', async () => {
+    const bad = await admin().from('push_subscriptions').insert({ ...row(a.id), p256dh: 'short' })
+    expect(bad.error?.code).toBe('23514')
+  })
+})
