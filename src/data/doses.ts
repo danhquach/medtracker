@@ -16,6 +16,9 @@ export async function listDoses(from: string, to: string): Promise<DoseEvent[]> 
 // RPCs returning a composite can come back as null or an object with a null id.
 const rowOrNull = (d: DoseEvent | null): DoseEvent | null => (d && d.id ? d : null)
 
+/** Shown when setDoseStatus returns null: the dose was regenerated (e.g. its schedule edited on another device). */
+export const STALE_DOSE = 'That dose changed on another device, so nothing was saved. The list is now up to date.'
+
 export async function setDoseStatus(id: string, status: DoseStatus): Promise<DoseEvent | null> {
   const { data, error } = await supabase.rpc('set_dose_status', { p_dose: id, p_status: status })
   if (error) throw error

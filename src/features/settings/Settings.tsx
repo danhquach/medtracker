@@ -12,7 +12,7 @@ import LoadError from '../auth/LoadError'
 import SetPasswordForm from '../auth/SetPasswordForm'
 import { useSession } from '../auth/useSession'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
-import { toCsv } from './exportCsv'
+import { csvBlob, toCsv } from './exportCsv'
 
 const SNOOZE = [5, 10, 15, 30, 60] as const
 export const BATTERY_TIP = "Reminders late? In Android settings, set Chrome's battery use to Unrestricted."
@@ -139,7 +139,7 @@ export default function Settings() {
     setError(null)
     try {
       const [meds, schedules] = await Promise.all([listMeds(), listSchedules()])
-      const url = URL.createObjectURL(new Blob([toCsv(meds, schedules)], { type: 'text/csv;charset=utf-8' }))
+      const url = URL.createObjectURL(csvBlob(toCsv(meds, schedules)))
       const a = document.createElement('a')
       a.href = url
       a.download = 'medtracker-plan.csv'
