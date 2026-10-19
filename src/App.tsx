@@ -3,16 +3,11 @@ import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
 import { bootSession } from './data/boot'
 import Welcome from './features/auth/Welcome'
 import { useSession } from './features/auth/useSession'
+import History from './features/history/History'
 import MedsList from './features/meds/MedsList'
-import SettingsStub from './features/settings/SettingsStub'
+import Settings from './features/settings/Settings'
 import Today from './features/today/Today'
 import './theme.css'
-
-const Page = ({ title }: { title: string }) => (
-  <main>
-    <h2>{title}</h2>
-  </main>
-)
 
 function useBoot(userId: string | undefined): boolean {
   const [readyFor, setReadyFor] = useState<string | null>(null)
@@ -47,8 +42,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/today" replace />} />
           <Route path="/today" element={<Today />} />
           <Route path="/meds" element={<MedsList />} />
-          <Route path="/history" element={<Page title="History" />} />
-          <Route path="/settings" element={<SettingsStub />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       ) : (
         <main aria-busy="true" />

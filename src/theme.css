@@ -253,3 +253,26 @@ fieldset {
   width: 100%;
   text-align: left;
 }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.history-grid {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+.history-grid th[scope='row'] {
+  text-align: left;
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
