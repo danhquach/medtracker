@@ -416,3 +416,9 @@ enabled = true
 
 [functions.send-reminders]
 verify_jwt = false
+
+[functions.dose-action]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = true
