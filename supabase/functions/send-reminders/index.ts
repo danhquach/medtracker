@@ -57,14 +57,18 @@ Deno.serve(async (req) => {
         if (error) throw error
       },
       signToken: (c) => signActionToken(c, tokenKey),
-      refillMeds: async () => {
-        const { data, error } = await db
+      refillMeds: async (afterId, limit) => {
+        let q = db
           .from('medications')
           .select(
             'id, user_id, name, stock, units_per_dose, refill_threshold_days, paused, notify, refill_alerted_at, schedules(kind, times, weekdays, interval_days)',
           )
           .not('stock', 'is', null)
           .eq('paused', false)
+          // Skip meds that can neither alert (notify off) nor re-arm (never alerted).
+          .or('notify.is.true,refill_alerted_at.not.is.null')
+        if (afterId) q = q.gt('id', afterId)
+        const { data, error } = await q.order('id').limit(limit)
         if (error) throw error
         return (data ?? []) as RefillMed[]
       },
