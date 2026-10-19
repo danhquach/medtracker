@@ -5,7 +5,7 @@ import Today from './Today'
 
 const api = vi.hoisted(() => ({
   profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
-  setDoseStatus: vi.fn((_id: string, _status: string) => Promise.resolve(null)),
+  setDoseStatus: vi.fn((id: string, _status: string) => Promise.resolve<unknown>({ id })),
   guest: false,
   meds: [] as unknown[],
   listDoses: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock('../../data/meds', () => ({
   listSchedules: () => Promise.resolve([sched]),
 }))
 vi.mock('../../push/closeStale', () => ({ closeStaleNotifications: api.closeStale, closeDoseNotification: api.closeOne }))
-vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus }))
+vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus, STALE_DOSE: 'stale dose' }))
 
 const defaultDoses = () =>
   Promise.resolve([
@@ -43,7 +43,7 @@ beforeEach(() => {
   api.guest = false
   api.meds = [med]
   api.setDoseStatus.mockReset()
-  api.setDoseStatus.mockImplementation(() => Promise.resolve(null))
+  api.setDoseStatus.mockImplementation((id) => Promise.resolve({ id }))
   api.closeStale.mockClear()
   api.closeOne.mockClear()
   api.listDoses.mockReset()
@@ -88,7 +88,7 @@ describe('Today', () => {
 
   it('Taken is the primary action and applies before the server answers', async () => {
     let finish!: () => void
-    api.setDoseStatus.mockImplementation(() => new Promise((r) => (finish = () => r(null))))
+    api.setDoseStatus.mockImplementation(() => new Promise((r) => (finish = () => r({ id: 'd1' }))))
     renderToday()
     const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
     expect(taken.className).toContain('primary')
@@ -107,6 +107,16 @@ describe('Today', () => {
     taken.click()
     expect((await screen.findByRole('alert')).textContent).toContain('offline')
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2))
+  })
+
+  it('marking a dose regenerated on another device says so and reloads', async () => {
+    api.setDoseStatus.mockImplementation(() => Promise.resolve(null))
+    renderToday()
+    const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
+    taken.click()
+    expect((await screen.findByRole('alert')).textContent).toBe('stale dose')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2))
+    expect(api.closeOne).not.toHaveBeenCalled()
   })
 
   it('shows statuses in sentence case', async () => {
@@ -177,7 +187,7 @@ describe('Today', () => {
 
   it('a wrong tap can be undone on Today, putting the dose back to due', async () => {
     const saved: Record<string, string> = {}
-    api.setDoseStatus.mockImplementation((id, status) => ((saved[id] = status), Promise.resolve(null)))
+    api.setDoseStatus.mockImplementation((id, status) => ((saved[id] = status), Promise.resolve({ id })))
     api.listDoses.mockImplementation(() =>
       defaultDoses().then((ds) => ds.map((d) => (saved[d.id] ? { ...d, status: saved[d.id] } : d))),
     )

@@ -21,7 +21,7 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
 vi.mock('../../data/meds', () => ({ listMeds: api.listMeds }))
-vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus }))
+vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus, STALE_DOSE: 'stale dose' }))
 
 const med = (id: string, name: string, paused = false) => ({ id, name, paused })
 const dose = (id: string, medication_id: string, scheduled_for: string, status: string) => ({
@@ -145,6 +145,15 @@ describe('History', () => {
     fireEvent.click(within(group).getByRole('button', { name: 'Taken' }))
     expect((await screen.findByRole('alert')).textContent).toContain('offline')
     expect(within(group).getByRole('button', { name: 'Skipped' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('says so when the dose was regenerated on another device', async () => {
+    api.setDoseStatus.mockResolvedValue(null)
+    renderHistory('/history/m1')
+    const group = await screen.findByRole('group', { name: /Sun, Oct 18/ })
+    fireEvent.click(within(group).getByRole('button', { name: 'Taken' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('stale dose')
+    expect(screen.queryByRole('group', { name: /Sun, Oct 18/ })).toBeNull()
   })
 
   it('queries a 30 local-day window', async () => {

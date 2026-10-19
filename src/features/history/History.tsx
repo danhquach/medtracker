@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { CheckIcon, CircleIcon, CrossIcon, SkipIcon } from '../../components/icons'
 import { Empty, Loading } from '../../components/states'
-import { listDoses, setDoseStatus } from '../../data/doses'
+import { listDoses, setDoseStatus, STALE_DOSE } from '../../data/doses'
 import { listMeds } from '../../data/meds'
 import { DEFAULT_TIME_ZONE } from '../../data/profile'
 import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
@@ -95,6 +95,7 @@ export default function History() {
     try {
       const row = await setDoseStatus(dose.id, status)
       setDoses((ds) => (row ? ds.map((d) => (d.id === row.id ? row : d)) : ds.filter((d) => d.id !== dose.id)))
+      if (!row) setSaveError(STALE_DOSE)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Could not save that change')
     } finally {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Medication, Schedule } from '../../lib/types'
 import { scheduleSummary } from '../meds/summary'
-import { toCsv } from './exportCsv'
+import { csvBlob, toCsv } from './exportCsv'
 
 const med = (over: Partial<Medication> = {}): Medication =>
   ({
@@ -47,5 +47,24 @@ describe('toCsv', () => {
       expect(csv).toContain(`'${bad}`)
       expect(csv).not.toMatch(new RegExp(`(^|,|\\n)${bad.replace(/[+()$]/g, '\\$&')}`))
     }
+  })
+
+  it('neutralises a formula after leading whitespace', () => {
+    for (const bad of [' =1+1', '  @SUM(A1)', '\u00a0+1', '\n-1']) {
+      const csv = toCsv([med({ name: bad })], [sched()])
+      expect(csv.split('\r\n').slice(1).join('\r\n')).toMatch(/^"?'/)
+    }
+  })
+
+  it('leaves ordinary text that only contains formula characters alone', () => {
+    expect(toCsv([med({ name: 'Vitamin B-12' })], [sched()]).split('\r\n')[1]).toMatch(/^Vitamin B-12,/)
+  })
+})
+
+describe('csvBlob', () => {
+  it('starts with a UTF-8 BOM so Excel keeps accents', async () => {
+    const bytes = new Uint8Array(await csvBlob('name\r\nHôpital').arrayBuffer())
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    expect(new TextDecoder().decode(bytes)).toBe('name\r\nHôpital') // decoder strips the BOM
   })
 })

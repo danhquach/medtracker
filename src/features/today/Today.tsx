@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Empty, Loading } from '../../components/states'
 import { avgDosesPerDay, daysLeft, refillState } from '../../../supabase/functions/_shared/refill'
-import { listDoses, setDoseStatus } from '../../data/doses'
+import { listDoses, setDoseStatus, STALE_DOSE } from '../../data/doses'
 import { listMeds, listSchedules } from '../../data/meds'
 import type { DoseEvent, DoseStatus, Medication, Schedule } from '../../lib/types'
 import { isGuest } from '../auth/auth'
@@ -100,8 +100,8 @@ export default function Today() {
       setDoses((ds) => ds.map((d) => (d.id === dose.id ? { ...d, status, acted_at: actedAt } : d)))
       let failed: string | null = null
       try {
-        await setDoseStatus(dose.id, status)
-        if (status !== 'pending') void closeDoseNotification(dose.id) // an undone dose is due again
+        if (!(await setDoseStatus(dose.id, status))) failed = STALE_DOSE
+        else if (status !== 'pending') void closeDoseNotification(dose.id) // an undone dose is due again
       } catch (e) {
         failed = e instanceof Error ? e.message : 'Could not update dose'
       }
