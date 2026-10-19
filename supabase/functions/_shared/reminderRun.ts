@@ -13,6 +13,7 @@ export type ClaimedDose = {
   med_name: string
   strength: string | null
   scheduled_for: string
+  due_at: string // coalesce(snoozed_until, scheduled_for) before the claim cleared it
 }
 
 export type RefillMed = MedLike & {
@@ -85,7 +86,7 @@ export async function runReminders(d: Deps): Promise<RunResult> {
   const doses = await d.claim()
   r.claimed = doses.length
   const toUnclaim: string[] = []
-  const retryable = (x: ClaimedDose) => d.now() - Date.parse(x.scheduled_for) <= HOUR
+  const retryable = (x: ClaimedDose) => d.now() - Date.parse(x.due_at) <= HOUR
 
   let tz = new Map<string, string>()
   let tzOk = true

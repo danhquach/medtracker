@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { runReminders, type ClaimedDose, type Deps, type RefillMed, type SendResult } from './reminderRun'
 
 const NOW = Date.parse('2026-10-19T15:00:00Z')
-const dose = (id: string, minsAgo = 5, user = 'u1'): ClaimedDose => ({
+const dose = (id: string, minsAgo = 5, user = 'u1', dueMinsAgo = minsAgo): ClaimedDose => ({
   dose_id: id,
   user_id: user,
   med_name: 'Med',
   strength: '5 mg',
   scheduled_for: new Date(NOW - minsAgo * 60_000).toISOString(),
+  due_at: new Date(NOW - dueMinsAgo * 60_000).toISOString(),
 })
 
 function mk(over: Partial<Deps> & { doses?: ClaimedDose[]; results?: SendResult[]; meds?: RefillMed[] } = {}) {
@@ -97,6 +98,23 @@ describe('runReminders', () => {
     const r = await runReminders(deps)
     expect(r.sent).toBe(0)
     expect(log.unclaimed).toEqual(['d1'])
+  })
+  it('retry cutoff uses due_at (snooze expiry), not scheduled_for', async () => {
+    const mkErr = (doses: ClaimedDose[]) =>
+      mk({
+        doses,
+        timeZones: async () => {
+          throw new Error('db')
+        },
+      })
+    // Scheduled 3h ago but snooze just expired: still retryable.
+    const snoozed = mkErr([dose('snz', 180, 'u1', 2)])
+    await runReminders(snoozed.deps)
+    expect(snoozed.log.unclaimed).toEqual(['snz'])
+    // Scheduled 10 min ago but due 90 min ago: not retryable.
+    const stale = mkErr([dose('stale', 10, 'u1', 90)])
+    await runReminders(stale.deps)
+    expect(stale.log.unclaimed).toEqual([])
   })
   it('refill marked only when a push was ok', async () => {
     const ok = mk({ meds: [lowMed()], results: ['ok'] })

@@ -120,6 +120,30 @@ describe('claim_due_doses', () => {
     expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
   })
 
+  it('returns due_at = snooze expiry (or scheduled_for) captured before the claim clears it', async () => {
+    const med = await mkMed(a)
+    const plain = await mkDose(a, med, { scheduled_for: ago(30) })
+    const snz = ago(2)
+    const snoozed = await mkDose(a, med, { scheduled_for: ago(180), notified_at: ago(170), snoozed_until: snz })
+    const got = (await admin().rpc('claim_due_doses')).data as { dose_id: string; due_at: string; scheduled_for: string }[]
+    const byId = new Map(got.map((x) => [x.dose_id, x]))
+    expect(Date.parse(byId.get(plain)!.due_at)).toBe(Date.parse(byId.get(plain)!.scheduled_for))
+    expect(Date.parse(byId.get(snoozed)!.due_at)).toBe(Date.parse(snz))
+  })
+
+  it('unclaim_doses does not clobber a snooze set during the send window', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    const until = new Date(Date.now() + 600_000).toISOString()
+    expect((await a.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 10 })).error).toBeNull()
+    expect((await admin().rpc('unclaim_doses', { p_ids: [dose] })).error).toBeNull()
+    const row = await admin().from('dose_events').select('notified_at, snoozed_until').eq('id', dose).single()
+    expect(row.data!.notified_at).not.toBeNull()
+    expect(Date.parse(row.data!.snoozed_until)).toBeGreaterThan(Date.parse(until) - 60_000)
+    expect(await claim(a)).toHaveLength(0)
+  })
+
   it('orders by scheduled_for', async () => {
     const med = await mkMed(a)
     const late = await mkDose(a, med, { scheduled_for: ago(2) })
