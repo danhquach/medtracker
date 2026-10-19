@@ -5,13 +5,13 @@ const med: MedDraft = { name: 'A', units_per_dose: '1', stock: '', refill_thresh
 const sch = (p: Partial<ScheduleDraft> = {}): ScheduleDraft => ({
   kind: 'daily', times: ['09:00'], weekdays: [], interval_days: '', start_date: '', end_date: '', ...p,
 })
-const errs = (m: Partial<MedDraft> = {}, s: ScheduleDraft[] = [sch()]) => validateMed({ ...med, ...m }, s)
+const errs = (m: Partial<MedDraft> = {}, s: ScheduleDraft[] = [sch()]) => Object.values(validateMed({ ...med, ...m }, s))
 
 describe('validateMed', () => {
   it('accepts a valid med', () => expect(errs()).toEqual([]))
   it('requires a name', () => expect(errs({ name: '  ' })).toContain('Name is required'))
   it.each(['0', '-1', 'abc', ''])('rejects units_per_dose %j', (v) =>
-    expect(errs({ units_per_dose: v }).join()).toMatch(/Units per dose/))
+    expect(errs({ units_per_dose: v }).join()).toMatch(/Amount per dose/))
   it.each(['-1', 'x'])('rejects stock %j', (v) => expect(errs({ stock: v }).join()).toMatch(/Stock/))
   it('allows stock 0 and empty', () => {
     expect(errs({ stock: '0' })).toEqual([])
@@ -34,4 +34,9 @@ describe('validateMed', () => {
   it('prn needs no times', () => expect(errs({}, [sch({ kind: 'prn', times: [] })])).toEqual([]))
   it('end date must not precede start date', () =>
     expect(errs({}, [sch({ start_date: '2026-10-20', end_date: '2026-10-19' })]).join()).toMatch(/End date/))
+  it('keys each error to its field, schedule fields by index', () =>
+    expect(validateMed({ ...med, name: '' }, [sch(), sch({ kind: 'weekdays' })])).toEqual({
+      name: 'Name is required',
+      '1.weekdays': 'Pick at least one day',
+    }))
 })

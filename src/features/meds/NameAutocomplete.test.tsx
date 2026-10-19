@@ -23,3 +23,26 @@ describe('NameAutocomplete privacy', () => {
     expect(seen.queries.at(-1)).toBe('')
   })
 })
+
+describe('NameAutocomplete list', () => {
+  const setup = () => {
+    render(<NameAutocomplete value="" onChange={() => {}} onPick={() => {}} meds={[]} remoteEnabled />)
+    const input = screen.getByLabelText('Name')
+    fireEvent.change(input, { target: { value: 'ibu' } })
+    expect(screen.getByRole('button', { name: 'Picked Name' })).toBeTruthy()
+    return input
+  }
+  it('closes on Escape', () => {
+    const input = setup()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByRole('button', { name: 'Picked Name' })).toBeNull()
+    expect(input.getAttribute('aria-expanded')).toBe('false')
+  })
+  it('closes when focus leaves the field, but not when it moves into the list', () => {
+    const input = setup()
+    fireEvent.blur(input, { relatedTarget: screen.getByRole('button', { name: 'Picked Name' }) })
+    expect(screen.getByRole('button', { name: 'Picked Name' })).toBeTruthy()
+    fireEvent.blur(input, { relatedTarget: null })
+    expect(screen.queryByRole('button', { name: 'Picked Name' })).toBeNull()
+  })
+})
