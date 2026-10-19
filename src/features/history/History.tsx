@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { Empty, Loading } from '../../components/states'
 import { listDoses } from '../../data/doses'
 import { listMeds } from '../../data/meds'
 import { DEFAULT_TIME_ZONE } from '../../data/profile'
@@ -37,7 +39,7 @@ export default function History() {
   const [doses, setDoses] = useState<DoseEvent[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const { medId: selected } = useParams()
 
   const hasProfile = !!profile
   const today = todayIn(tz)
@@ -78,18 +80,21 @@ export default function History() {
         <LoadError message={profileError} onRetry={retryProfile} />
       </main>
     )
-  if (!loaded) return <main aria-busy="true" />
+  if (!loaded)
+    return (
+      <main>
+        <Loading />
+      </main>
+    )
 
   const detail = active.find((m) => m.id === selected)
+  if (selected && !detail) return <Navigate to="/history" replace />
   if (detail) {
     const list = doses
       .filter((d) => d.medication_id === detail.id)
       .sort((a, b) => b.scheduled_for.localeCompare(a.scheduled_for))
     return (
       <main className="stack">
-        <button type="button" onClick={() => setSelected(null)}>
-          Back
-        </button>
         <h2>{detail.name} — last 30 days</h2>
         {list.length === 0 ? (
           <p className="muted">No doses in the last 30 days.</p>
@@ -110,9 +115,8 @@ export default function History() {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6))
   return (
     <main className="stack">
-      <h2>History</h2>
       {error && <p role="alert">{error}</p>}
-      {!error && active.length === 0 && <p className="muted">No active medications.</p>}
+      {!error && active.length === 0 && <Empty>No active medications.</Empty>}
       {active.length > 0 && (
         <table className="history-grid">
           <thead>
@@ -130,9 +134,7 @@ export default function History() {
             {active.map((m) => (
               <tr key={m.id}>
                 <th scope="row">
-                  <button type="button" onClick={() => setSelected(m.id)}>
-                    {m.name}
-                  </button>
+                  <Link to={`/history/${m.id}`}>{m.name}</Link>
                 </th>
                 {days.map((d) => (
                   <td key={d}>

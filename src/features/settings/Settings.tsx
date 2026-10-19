@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { listMeds, listSchedules } from '../../data/meds'
 import { getProfile, markTimeZoneChosen, updateProfile, type ProfilePatch } from '../../data/profile'
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
+import { useGoBack } from '../../lib/useGoBack'
 import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled } from '../../push/subscribe'
 import { isGuest, needsPasswordFinish, signOut } from '../auth/auth'
 import CredentialsForm from '../auth/CredentialsForm'
@@ -28,7 +30,12 @@ export default function Settings() {
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [guestView, setGuestView] = useState<'menu' | 'signin' | 'create'>('menu')
+  // A URL param, not state, so the phone's Back button closes the form instead of leaving Settings.
+  const [params, setParams] = useSearchParams()
+  const account = params.get('account')
+  const guestView = account === 'signin' || account === 'create' ? account : 'menu'
+  const closeGuestForm = useGoBack('/settings')
+  const setGuestView = (v: 'menu' | 'signin' | 'create') => (v === 'menu' ? closeGuestForm() : setParams({ account: v }))
   const [deleting, setDeleting] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -150,7 +157,6 @@ export default function Settings() {
 
   return (
     <main className="stack">
-      <h2>Settings</h2>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {profileError && !profile && <LoadError message={profileError} onRetry={() => void loadProfile()} />}
@@ -271,7 +277,7 @@ export default function Settings() {
           Export med plan (CSV)
         </button>
         {!deleting ? (
-          <button type="button" onClick={() => setDeleting(true)}>
+          <button type="button" className="danger" onClick={() => setDeleting(true)}>
             Delete account
           </button>
         ) : (
@@ -279,7 +285,7 @@ export default function Settings() {
             <p>This permanently deletes your account and all your medications and history. Type DELETE to confirm.</p>
             <input aria-label="Type DELETE to confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
             <div className="row">
-              <button type="button" disabled={confirmText !== 'DELETE' || busy} onClick={() => void deleteAccount()}>
+              <button type="button" className="danger" disabled={confirmText !== 'DELETE' || busy} onClick={() => void deleteAccount()}>
                 Delete my account
               </button>
               <button

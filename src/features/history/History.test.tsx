@@ -1,6 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import History from './History'
+
+const renderHistory = (path = '/history') =>
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/history" element={<History />} />
+        <Route path="/history/:medId" element={<History />} />
+      </Routes>
+    </MemoryRouter>,
+  )
 
 const api = vi.hoisted(() => ({
   listDoses: vi.fn(),
@@ -36,8 +47,8 @@ beforeEach(() => {
 
 describe('History', () => {
   it('shows only active meds with labelled icons per local day', async () => {
-    render(<History />)
-    const row = (await screen.findByRole('button', { name: 'Aspirin' })).closest('tr') as HTMLElement
+    renderHistory()
+    const row = (await screen.findByRole('link', { name: 'Aspirin' })).closest('tr') as HTMLElement
     expect(screen.queryByText('Paused med')).toBeNull()
     const cells = within(row).getAllByRole('cell')
     expect(cells).toHaveLength(7)
@@ -49,20 +60,28 @@ describe('History', () => {
     expect(within(cells[0]).queryAllByRole('img')).toHaveLength(0)
   })
 
-  it('opens a 30-day list on tap and goes back', async () => {
-    render(<History />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Aspirin' }))
+  it('opens a 30-day list on tap', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('link', { name: 'Aspirin' }))
     expect(screen.getByRole('heading', { name: /Aspirin/ })).toBeTruthy()
     const items = screen.getAllByRole('listitem')
     expect(items).toHaveLength(6)
     expect(within(items[items.length - 1]).getByRole('img', { name: 'Taken' })).toBeTruthy()
     expect(items[0].textContent).toContain('10:00 PM')
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  })
+
+  it('opens a med history from its own address', async () => {
+    renderHistory('/history/m1')
+    expect(await screen.findByRole('heading', { name: /Aspirin/ })).toBeTruthy()
+  })
+
+  it('redirects a paused or unknown med to the grid', async () => {
+    renderHistory('/history/m2')
     await waitFor(() => expect(screen.getByRole('table')).toBeTruthy())
   })
 
   it('queries a 30 local-day window', async () => {
-    render(<History />)
+    renderHistory()
     await screen.findByRole('table')
     const [from, to] = api.listDoses.mock.calls[0]
     expect(from).toBe('2026-09-20T04:00:00.000Z')
@@ -71,7 +90,7 @@ describe('History', () => {
 
   it('shows an error with Retry instead of a blank page when the profile fails', () => {
     api.profile = { profile: null, error: 'no profile', retry: vi.fn() }
-    render(<History />)
+    renderHistory()
     expect(screen.getByRole('alert').textContent).toContain('no profile')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(api.profile.retry).toHaveBeenCalled()
