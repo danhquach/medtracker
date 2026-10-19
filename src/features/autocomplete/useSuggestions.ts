@@ -12,10 +12,11 @@ const MIN_CHARS = 3
 const DEBOUNCE_MS = 300
 
 export function useSuggestions(
-  q: string,
+  input: string,
   meds: Medication[],
   remoteEnabled: boolean,
 ): { mine: Suggestion[]; ca: Group; us: Group } {
+  const q = input.trim()
   const mine = useMemo(() => searchMine(q, meds), [q, meds])
   const active = remoteEnabled && q.length >= MIN_CHARS
   const [ca, setCa] = useState<Tagged | null>(null)
