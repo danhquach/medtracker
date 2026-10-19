@@ -26,6 +26,32 @@ describe('useSuggestions', () => {
     expect(result.current.us).toEqual({ items: [], state: 'idle' })
   })
 
+  it('blank input → idle, no fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useSuggestions('   ', meds, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.ca.state).toBe('idle')
+    expect(result.current.us.state).toBe('idle')
+  })
+
+  it('padded input matches own meds and searches the trimmed name', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(res(url.includes('canada.ca') ? dpdBody([]) : rxBody([]))),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { result, rerender } = renderHook(({ q }) => useSuggestions(q, meds, true), { initialProps: { q: ' ibu ' } })
+    expect(result.current.mine.map((s) => s.name)).toEqual(['Ibuprofen'])
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [url] of fetchMock.mock.calls) expect(url).not.toMatch(/%20/)
+    rerender({ q: 'ibu' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.ca.state).toBe('done')
+  })
+
   it('remoteEnabled=false → no fetch, mine still shown', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
