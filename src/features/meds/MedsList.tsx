@@ -117,6 +117,7 @@ export default function MedsList() {
             med={m}
             schedules={schedules.filter((s) => s.medication_id === m.id)}
             onEdit={() => navigate(`/meds/${m.id}/edit`)}
+            onHistory={() => navigate(`/history/${m.id}`)}
             onDelete={() => {
               if (window.confirm(`Delete ${m.name}? This also removes its schedule and dose history.`)) {
                 void run(() => deleteMed(m.id), 'Could not delete medication')

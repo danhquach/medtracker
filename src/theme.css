@@ -8,6 +8,7 @@
   --success: #6fd08c; /* 7.6:1 */
   --warning: #f2b84b; /* 8.0:1 */
   --danger: #ff8a7f; /* destructive outline + text: 6.3:1 */
+  --info: #8ab4f8; /* skipped: 6.8:1 */
   --border: #8a8a8a; /* control outlines: 4.2:1 (needs 3:1) */
   --text: #f2f2f2;
   --text-muted: #b3b3b3; /* 6.9:1 */
@@ -305,6 +306,26 @@ input {
   color: var(--warning);
 }
 
+.dose-skipped,
+.status-skipped {
+  color: var(--info);
+}
+
+.dose-pending,
+.status-pending {
+  color: var(--text-muted);
+}
+
+.status-icon {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.status-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
 .med-card {
   display: flex;
   flex-direction: column;
@@ -389,11 +410,45 @@ fieldset {
   display: inline-block;
   padding: 12px 0;
 }
+.history-grid .day-head {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+}
+.history-grid tr.is-paused th[scope='row'] a {
+  color: var(--text-muted);
+}
+.chip-inline {
+  margin: 0 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  vertical-align: middle;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .history-list {
   list-style: none;
   padding: 0;
-  max-height: 60vh;
-  overflow-y: auto;
+}
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface);
 }
 
 .field-error {
@@ -499,4 +554,11 @@ details.more > summary {
   margin: 2px 0;
   border: 0;
   border-top: 1px solid var(--border);
+}
+
+.dose-name {
+  display: inline-block;
+  padding: 6px 0;
+  color: inherit;
+  text-underline-offset: 3px;
 }

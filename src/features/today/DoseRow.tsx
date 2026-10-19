@@ -36,7 +36,9 @@ export default function DoseRow({
   return (
     <li className="dose-row">
       <div>
-        <strong>{label}</strong>
+        <Link className="dose-name" to={`/history/${dose.medication_id}`}>
+          <strong>{label}</strong>
+        </Link>
         {dose.status === 'missed' && <span className="status status-missed">Missed</span>}
       </div>
       <div className="row">

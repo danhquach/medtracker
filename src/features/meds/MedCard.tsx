@@ -11,6 +11,7 @@ export default function MedCard({
   onPause,
   onLogDose,
   onRefill,
+  onHistory,
 }: {
   med: Medication
   schedules: Schedule[]
@@ -19,6 +20,7 @@ export default function MedCard({
   onPause: (paused: boolean) => void
   onLogDose: () => void
   onRefill: (qty: number) => void
+  onHistory: () => void
 }) {
   const [refilling, setRefilling] = useState(false)
   const [qty, setQty] = useState('')
@@ -75,6 +77,9 @@ export default function MedCard({
             </button>
             <button type="button" onClick={choose(() => setRefilling(true))}>
               Refilled
+            </button>
+            <button type="button" onClick={choose(onHistory)}>
+              History
             </button>
             <hr />
             <button type="button" className="danger" onClick={choose(onDelete)}>
