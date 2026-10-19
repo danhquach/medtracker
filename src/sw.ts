@@ -1,7 +1,7 @@
 // Service worker wiring. Decision logic lives in push/swLogic.ts (unit-tested).
 // Typed minimally: the project compiles with the DOM lib, not WebWorker.
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
-import { handleAction, notificationFromPayload, type NotificationData } from './push/swLogic'
+import { handleAction, notificationFromPayload, todayUrl, type NotificationData } from './push/swLogic'
 import type { PushPayload } from '../supabase/functions/_shared/reminderRun'
 
 type Ev = { waitUntil(p: Promise<unknown>): void }
@@ -9,7 +9,7 @@ type PushEv = Ev & { data: { json(): unknown } | null }
 type ClickEv = Ev & { action: string; notification: { data: NotificationData; close(): void } }
 type Win = { url: string; focus(): Promise<unknown> }
 type SW = {
-  registration: { showNotification(title: string, o: object): Promise<void> }
+  registration: { scope: string; showNotification(title: string, o: object): Promise<void> }
   clients: { matchAll(o: object): Promise<Win[]>; openWindow(url: string): Promise<unknown> }
   skipWaiting(): Promise<void>
   addEventListener(type: string, fn: (e: never) => void): void
@@ -29,7 +29,7 @@ sw.addEventListener('push', (e: PushEv) => {
   } catch {
     return
   }
-  const n = notificationFromPayload(payload)
+  const n = notificationFromPayload(payload, sw.registration.scope)
   e.waitUntil(sw.registration.showNotification(n.title, n.options))
 })
 
@@ -44,7 +44,7 @@ async function openToday(): Promise<unknown> {
       /* fall through */
     }
   }
-  return sw.clients.openWindow('/today')
+  return sw.clients.openWindow(todayUrl(sw.registration.scope))
 }
 
 sw.addEventListener('notificationclick', (e: ClickEv) => {

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Keeps the SHA pins in ci.yml current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

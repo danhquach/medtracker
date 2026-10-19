@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Lint, unit, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      # Unit tests only: integration and e2e tests need secrets.
+      - run: npm test
+      - name: Build (no deploy)
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        run: npm run build
+      - name: Check build variables
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
+        run: |
+          missing=0
+          for v in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_VAPID_PUBLIC_KEY; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Repository variable $v is empty. Add it under Settings > Secrets and variables > Actions > Variables."
+              missing=1
+            fi
+          done
+          exit $missing
+      - name: Build (Pages)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          VITE_BASE: /medtracker/
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
+        run: npm run build:pages
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  check:
+    name: Lint, test, build
+    needs: [build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require build success
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo "::error::build job result: $BUILD_RESULT"
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [check]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

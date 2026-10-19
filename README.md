@@ -52,7 +52,12 @@ npx supabase db reset --linked --yes
 
 **WARNING: TEST ONLY. This wipes the linked project. Never run it against prod.**
 
-CI: private repo with limited Actions minutes, so there are no workflows. Run tests locally.
+CI (`.github/workflows/ci.yml`) runs on pull requests and on pushes to `main` (the repo is public, so Actions minutes are free). It lints, type-checks, runs unit tests and builds. Integration and e2e tests need secrets, so run them locally. The required status check is "Lint, test, build". Deploy to GitHub Pages happens on merge to `main`.
+
+Branch and tag protection:
+
+- `main`: PR required, no force-push or deletion, squash or merge commits, stale reviews dismissed, conversations resolved, required check "Lint, test, build" (strict: branch must be up to date).
+- Tags `v*`: admins only.
 
 ## Deploy (owner)
 
@@ -91,6 +96,17 @@ Steps (use a separate prod Supabase project; the free plan allows 2 projects, se
 7. Vercel: import the repo, set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. `vercel.json` handles the SPA rewrite and `sw.js` no-cache header.
 
 From the first prod deploy, migrations are append-only: change schema or cron only via a NEW migration.
+
+## Deploy to GitHub Pages
+
+Served at `https://danhquach.github.io/medtracker/` (sub-path build via `VITE_BASE=/medtracker/`; local dev and tests stay at `/`).
+
+1. The repo must be public (GitHub Pages on the free plan).
+2. Settings > Pages > Source: GitHub Actions.
+3. Settings > Secrets and variables > Actions > Variables: add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. These are public values baked into the bundle; the build fails early if any is empty.
+4. Supabase Auth: set Site URL to `https://danhquach.github.io/medtracker/` and add `https://danhquach.github.io/medtracker/**` to Redirect URLs (wildcard so `settings?finish=1` matches).
+5. Reminders need the Vault secrets (see Deploy steps 3 and 5) on whichever Supabase project the build points at.
+6. Merge to `main` (or run the "CI" workflow manually on `main`); the "Deploy to GitHub Pages" job publishes after the checks pass. The Pages build fails early if a variable is empty; PR builds use base `/` and need no variables. `build:pages` copies `index.html` to `404.html` (SPA fallback) and adds `.nojekyll`.
 
 ## Troubleshooting reminders
 
