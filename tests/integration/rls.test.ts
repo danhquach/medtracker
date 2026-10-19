@@ -23,6 +23,7 @@ type Spec = {
   update: Record<string, unknown>
   preExisting?: boolean // row created by trigger, not by insert
   adminInsert?: boolean // users have no insert grant (write path is an RPC)
+  noDelete?: boolean // users have no delete grant
 }
 
 const specs: Spec[] = [
@@ -32,6 +33,7 @@ const specs: Spec[] = [
     row: (uid) => ({ user_id: uid, nickname: 'x' }),
     update: { nickname: 'hacked' },
     preExisting: true,
+    noDelete: true,
   },
   {
     table: 'medications',
@@ -113,8 +115,12 @@ describe('RLS isolation', () => {
 
       it('other user deletes 0 rows', async () => {
         const { data, error } = await ctx.b.client.from(s.table).delete().eq(s.pk, rowId).select()
-        expect(error).toBeNull()
-        expect(data).toHaveLength(0)
+        if (s.noDelete) {
+          expect(error?.code).toBe('42501')
+        } else {
+          expect(error).toBeNull()
+          expect(data).toHaveLength(0)
+        }
         const { data: still } = await admin().from(s.table).select('*').eq(s.pk, rowId)
         expect(still).toHaveLength(1)
       })
@@ -179,6 +185,58 @@ describe('integrity', () => {
     const { error } = await admin()
       .from('push_subscriptions').insert({ user_id: ctx.a.id, endpoint: 'http://push.example.test/x', p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) })
     expect(error?.code).toBe('23514')
+  })
+})
+
+describe('profile guard', () => {
+  it('owner cannot delete or insert their profile', async () => {
+    expect((await ctx.a.client.from('profiles').delete().eq('user_id', ctx.a.id)).error?.code).toBe('42501')
+    expect((await ctx.a.client.from('profiles').insert({ user_id: ctx.a.id })).error?.code).toBe('42501')
+    const { data } = await admin().from('profiles').select('user_id').eq('user_id', ctx.a.id)
+    expect(data).toHaveLength(1)
+  })
+
+  it('owner cannot write bookkeeping columns directly', async () => {
+    for (const patch of [{ password_set: false }, { last_seen_at: '2000-01-01T00:00:00Z' }]) {
+      expect((await ctx.a.client.from('profiles').update(patch).eq('user_id', ctx.a.id)).error?.code).toBe('42501')
+    }
+  })
+
+  it('owner can still edit settings', async () => {
+    const { data, error } = await ctx.a.client.from('profiles').update({ nickname: 'Test User' }).eq('user_id', ctx.a.id).select().single()
+    expect(error).toBeNull()
+    expect(data!.nickname).toBe('Test User')
+  })
+
+  it('touch_last_seen bumps last_seen_at', async () => {
+    await admin().from('profiles').update({ last_seen_at: '2000-01-01T00:00:00Z' }).eq('user_id', ctx.a.id)
+    expect((await ctx.a.client.rpc('touch_last_seen')).error).toBeNull()
+    const { data } = await admin().from('profiles').select('last_seen_at').eq('user_id', ctx.a.id).single()
+    expect(new Date(data!.last_seen_at).getFullYear()).toBeGreaterThan(2000)
+  })
+
+  it('mark_password_set is a no-op for a guest with no password', async () => {
+    const g = await newGuest()
+    try {
+      expect((await g.client.rpc('mark_password_set')).error).toBeNull()
+      const { data } = await admin().from('profiles').select('password_set').eq('user_id', g.id).single()
+      expect(data!.password_set).toBe(false)
+    } finally {
+      await admin().auth.admin.deleteUser(g.id)
+    }
+  })
+
+  it('mark_password_set sets the flag for a user with a password', async () => {
+    await admin().from('profiles').update({ password_set: false }).eq('user_id', ctx.a.id)
+    expect((await ctx.a.client.rpc('mark_password_set')).error).toBeNull()
+    const { data } = await admin().from('profiles').select('password_set').eq('user_id', ctx.a.id).single()
+    expect(data!.password_set).toBe(true)
+  })
+
+  it('anon cannot call the RPCs or handle_new_user', async () => {
+    for (const fn of ['touch_last_seen', 'mark_password_set', 'handle_new_user']) {
+      expect((await anon().rpc(fn)).error, fn).not.toBeNull()
+    }
   })
 })
 

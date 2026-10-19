@@ -1,5 +1,5 @@
 import type { User } from '@supabase/supabase-js'
-import { updateProfile } from '../../data/profile'
+import { markPasswordSet } from '../../data/profile'
 import { removeThisDeviceSubscription } from '../../push/subscribe'
 import { appUrl } from '../../lib/basePath'
 import { supabase } from '../../lib/supabase'
@@ -25,7 +25,7 @@ export async function createProfile(email: string, password: string): Promise<'d
     if (isEmailPendingError(pwError)) return 'confirm'
     throw pwError
   }
-  await updateProfile({ password_set: true })
+  await markPasswordSet()
   await revokeOtherSessions()
   return 'done'
 }
@@ -55,7 +55,7 @@ export async function signUp(email: string, password: string): Promise<boolean> 
   const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { password_set: true } } })
   if (error) throw error
   if (!data.session) return false
-  await updateProfile({ password_set: true })
+  await markPasswordSet()
   return true
 }
 
@@ -81,7 +81,7 @@ export async function signOut(): Promise<void> {
 export async function setPassword(password: string): Promise<void> {
   const { error } = await supabase.auth.updateUser({ password })
   if (error) throw error
-  await updateProfile({ password_set: true })
+  await markPasswordSet()
   await revokeOtherSessions()
 }
 
