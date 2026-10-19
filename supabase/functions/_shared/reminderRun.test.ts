@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runReminders, type ClaimedDose, type Deps, type RefillMed, type SendResult } from './reminderRun'
+import { REFILL_PAGE, runReminders, type ClaimedDose, type Deps, type RefillMed, type SendResult } from './reminderRun'
 
 const NOW = Date.parse('2026-10-19T15:00:00Z')
 const dose = (id: string, minsAgo = 5, user = 'u1', dueMinsAgo = minsAgo): ClaimedDose => ({
@@ -27,7 +27,11 @@ function mk(over: Partial<Deps> & { doses?: ClaimedDose[]; results?: SendResult[
     prune: async (id) => (log.pruned.push(id), true),
     unclaim: async (ids) => void log.unclaimed.push(...ids),
     signToken: async () => 'tok',
-    refillMeds: async () => over.meds ?? [],
+    refillMeds: async (after, limit) => {
+      const all = over.meds ?? []
+      const start = after === null ? 0 : all.findIndex((m) => m.id === after) + 1
+      return all.slice(start, start + limit)
+    },
     markRefill: async (id, a) => void log.marks.push([id, a]),
     ...over,
   }
@@ -141,6 +145,84 @@ describe('runReminders', () => {
       },
     })
     expect((await runReminders(c.deps)).errors).toBe(1)
+  })
+  it('sent counts doses, not pushes', async () => {
+    const { deps, log } = mk({ doses: [dose('d1'), dose('d2')], results: ['ok', 'ok'] })
+    const r = await runReminders(deps)
+    expect(log.payloads).toHaveLength(4)
+    expect(r).toMatchObject({ sent: 2, refills: 0 })
+  })
+  it('refill alerts are counted separately from doses', async () => {
+    const { deps } = mk({ doses: [dose('d1')], meds: [lowMed()], results: ['ok', 'ok'] })
+    expect(await runReminders(deps)).toMatchObject({ sent: 1, refills: 1 })
+  })
+  it('a dead device seen by two concurrent doses is pruned once and then skipped', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((res) => (release = res))
+    const sends: string[] = []
+    const { deps, log } = mk({
+      doses: [dose('d1'), dose('d2'), dose('d3')],
+      subsFor: async () => [{ id: 'dead' }, { id: 'live' }],
+      send: async (s) => {
+        sends.push(s.id)
+        return s.id === 'dead' ? 'gone' : 'ok'
+      },
+      prune: async (id) => {
+        log.pruned.push(id)
+        await gate
+        return true
+      },
+    })
+    const run = runReminders(deps)
+    await new Promise((res) => setTimeout(res, 0))
+    release()
+    const r = await run
+    expect(log.pruned).toEqual(['dead'])
+    expect(r.pruned).toBe(1)
+    expect(r.sent).toBe(3)
+    expect(sends.filter((x) => x === 'live')).toHaveLength(3)
+  })
+  it('a later dose skips a device pruned earlier in the run', async () => {
+    const sends: string[] = []
+    const { deps, log } = mk({
+      // One more dose than the pool size, so the last one starts after the prune.
+      doses: Array.from({ length: 6 }, (_, i) => dose(`d${i}`)),
+      subsFor: async () => [{ id: 'dead' }, { id: 'live' }],
+      send: async (s) => {
+        sends.push(s.id)
+        return s.id === 'dead' ? 'gone' : 'ok'
+      },
+    })
+    await runReminders(deps)
+    expect(sends.filter((x) => x === 'dead')).toHaveLength(5)
+    expect(sends.filter((x) => x === 'live')).toHaveLength(6)
+    expect(log.pruned).toEqual(['dead'])
+  })
+  it('refill pass pages past the row cap', async () => {
+    const meds = Array.from({ length: REFILL_PAGE * 2 + 3 }, (_, i) =>
+      lowMed({ id: `m${String(i).padStart(5, '0')}` }),
+    )
+    const pages: (string | null)[] = []
+    const { deps, log } = mk({ meds })
+    const inner = deps.refillMeds
+    deps.refillMeds = (after, limit) => (pages.push(after), inner(after, limit))
+    const r = await runReminders(deps)
+    expect(r.refills).toBe(meds.length)
+    expect(log.marks).toHaveLength(meds.length)
+    expect(pages).toEqual([null, meds[REFILL_PAGE - 1].id, meds[REFILL_PAGE * 2 - 1].id, meds.at(-1)!.id])
+  })
+  it('a refill page read error is counted and stops the pass', async () => {
+    let calls = 0
+    const { deps, log } = mk({
+      meds: [lowMed()],
+      refillMeds: async () => {
+        calls++
+        throw new Error('db')
+      },
+    })
+    expect((await runReminders(deps)).errors).toBe(1)
+    expect(calls).toBe(1)
+    expect(log.marks).toEqual([])
   })
   it('limits concurrency to 5', async () => {
     let cur = 0

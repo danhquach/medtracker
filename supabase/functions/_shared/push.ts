@@ -30,7 +30,8 @@ export async function sendPush(sub: PushSubRow, payload: PushPayload): Promise<S
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify(payload),
-      { TTL: 3600, timeout: 10_000 },
+      // High urgency so battery-saver phones deliver reminders on time instead of batching them.
+      { TTL: 3600, timeout: 10_000, urgency: 'high' },
     )
     return 'ok'
   } catch (e) {
