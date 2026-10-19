@@ -102,6 +102,12 @@ describe('App (routes and header)', () => {
     expect(await title('Meds')).toBeTruthy()
   })
 
+  it('Today titles another selected day by its date', async () => {
+    renderAt('/today?date=2026-01-06')
+    expect(await title('Tue, Jan 6')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Today' }).getAttribute('aria-current')).toBe('page')
+  })
+
   it('an unknown address goes to Today', async () => {
     renderAt('/nope')
     expect(await title('Today')).toBeTruthy()
