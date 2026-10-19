@@ -7,21 +7,13 @@ async function selectProfile(id: string) {
   return supabase.from('profiles').select('*').eq('user_id', id).single()
 }
 
-/** Loads the caller's profile; if the row is missing (PGRST116) creates a default one once. */
 export async function getProfile(): Promise<Profile> {
-  const id = await currentUserId()
-  let { data, error } = await selectProfile(id)
-  if (error?.code === 'PGRST116') {
-    const { error: insertError } = await supabase.from('profiles').insert({ user_id: id })
-    // 23505: a concurrent insert won; the row exists now.
-    if (insertError && insertError.code !== '23505') throw insertError
-    ;({ data, error } = await selectProfile(id))
-  }
+  const { data, error } = await selectProfile(await currentUserId())
   if (error) throw error
   return data as Profile
 }
 
-export type ProfilePatch = Partial<Pick<Profile, 'nickname' | 'time_zone' | 'snooze_minutes' | 'suggestions_enabled' | 'password_set'>>
+export type ProfilePatch = Partial<Pick<Profile, 'nickname' | 'time_zone' | 'snooze_minutes' | 'suggestions_enabled'>>
 
 export async function updateProfile(patch: ProfilePatch): Promise<Profile> {
   const id = await currentUserId()
@@ -36,8 +28,13 @@ export async function updateProfile(patch: ProfilePatch): Promise<Profile> {
 }
 
 export async function touchLastSeen(): Promise<void> {
-  const id = await currentUserId()
-  const { error } = await supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('user_id', id)
+  const { error } = await supabase.rpc('touch_last_seen')
+  if (error) throw error
+}
+
+/** Server checks that auth really holds a password before setting the flag. */
+export async function markPasswordSet(): Promise<void> {
+  const { error } = await supabase.rpc('mark_password_set')
   if (error) throw error
 }
 

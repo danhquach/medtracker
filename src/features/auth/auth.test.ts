@@ -6,7 +6,7 @@ const sb = vi.hoisted(() => ({
   signOut: vi.fn(),
 }))
 vi.mock('../../lib/supabase', () => ({ supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut } } }))
-vi.mock('../../data/profile', () => ({ updateProfile: vi.fn() }))
+vi.mock('../../data/profile', () => ({ markPasswordSet: vi.fn() }))
 
 const push = vi.hoisted(() => ({ remove: vi.fn() }))
 vi.mock('../../push/subscribe', () => ({ removeThisDeviceSubscription: push.remove }))
