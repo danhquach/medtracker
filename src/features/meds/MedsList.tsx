@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Navigate, useMatch, useNavigate, useParams } from 'react-router-dom'
+import { Empty, Loading } from '../../components/states'
 import { logPrnDose } from '../../data/doses'
 import { addStock, deleteMed, listMeds, listSchedules, saveMed, setPaused, type MedInput, type ScheduleInput } from '../../data/meds'
 import { DEFAULT_TIME_ZONE } from '../../data/profile'
 import type { Medication, Schedule } from '../../lib/types'
+import { useGoBack } from '../../lib/useGoBack'
+import LoadError from '../auth/LoadError'
 import { useProfile } from '../auth/useProfile'
 import { todayIn } from '../today/dayRange'
 import MedCard from './MedCard'
@@ -13,17 +17,22 @@ export default function MedsList() {
   const [meds, setMeds] = useState<Medication[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [editing, setEditing] = useState<Medication | 'new' | null>(null)
+  // The form is a route (/meds/new, /meds/:id/edit) so the phone's Back button closes it.
+  const isNew = useMatch('/meds/new') !== null
+  const { id: editId } = useParams()
+  const navigate = useNavigate()
+  const closeForm = useGoBack('/meds')
 
   const load = useCallback(async () => {
     try {
       const [m, s] = await Promise.all([listMeds(), listSchedules()])
       setMeds(m)
       setSchedules(s)
-      setError(null)
+      setLoadError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load medications')
+      setLoadError(e instanceof Error ? e.message : 'Could not load medications')
     } finally {
       setLoaded(true)
     }
@@ -35,6 +44,7 @@ export default function MedsList() {
 
   async function run(action: () => Promise<unknown>, fallback: string) {
     try {
+      setError(null)
       await action()
       await load()
     } catch (e) {
@@ -44,8 +54,8 @@ export default function MedsList() {
 
   async function save(med: MedInput, scheds: ScheduleInput[]) {
     await saveMed(med, scheds)
-    setEditing(null)
     await load()
+    closeForm()
   }
 
   const sorted = useMemo(
@@ -54,8 +64,22 @@ export default function MedsList() {
   )
   const tz = profile?.time_zone ?? DEFAULT_TIME_ZONE
 
-  if (editing) {
-    const med = editing === 'new' ? undefined : editing
+  if (!loaded)
+    return (
+      <main>
+        <Loading />
+      </main>
+    )
+  if (loadError && meds.length === 0)
+    return (
+      <main>
+        <LoadError message={loadError} onRetry={() => void load()} />
+      </main>
+    )
+
+  if (isNew || editId) {
+    const med = editId ? meds.find((m) => m.id === editId) : undefined
+    if (editId && !med) return <Navigate to="/meds" replace />
     return (
       <main>
         <MedForm
@@ -65,24 +89,23 @@ export default function MedsList() {
           remoteSuggestions={profile?.suggestions_enabled ?? true}
           today={todayIn(tz)}
           onSave={save}
-          onCancel={() => setEditing(null)}
+          onCancel={closeForm}
         />
       </main>
     )
   }
 
   return (
-    <main>
-      <h2>Meds</h2>
-      {error && <p role="alert">{error}</p>}
-      {loaded && meds.length === 0 && !error && <p className="muted">No medications yet. Tap + Add to create one.</p>}
+    <main className="has-fab">
+      {(error ?? loadError) && <p role="alert">{error ?? loadError}</p>}
+      {meds.length === 0 && <Empty>No medications yet. Tap + Add to create one.</Empty>}
       <ul className="dose-list">
         {sorted.map((m) => (
           <MedCard
             key={m.id}
             med={m}
             schedules={schedules.filter((s) => s.medication_id === m.id)}
-            onEdit={() => setEditing(m)}
+            onEdit={() => navigate(`/meds/${m.id}/edit`)}
             onDelete={() => {
               if (window.confirm(`Delete ${m.name}? This also removes its schedule and dose history.`)) {
                 void run(() => deleteMed(m.id), 'Could not delete medication')
@@ -94,7 +117,7 @@ export default function MedsList() {
           />
         ))}
       </ul>
-      <button type="button" className="primary fab" onClick={() => setEditing('new')}>
+      <button type="button" className="primary fab" onClick={() => navigate('/meds/new')}>
         + Add
       </button>
     </main>

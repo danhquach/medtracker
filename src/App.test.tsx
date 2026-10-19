@@ -14,6 +14,7 @@ vi.mock('./features/auth/auth', async (orig) => ({
 }))
 vi.mock('./data/boot', () => ({ bootSession: () => Promise.resolve() }))
 vi.mock('./data/profile', () => ({
+  DEFAULT_TIME_ZONE: 'America/Toronto',
   getProfile: () => Promise.resolve({ time_zone: 'America/Toronto', password_set: true }),
 }))
 vi.mock('./data/meds', () => ({ listMeds: () => Promise.resolve([]), listSchedules: () => Promise.resolve([]) }))
@@ -63,6 +64,47 @@ describe('App (signed in)', () => {
     renderAt('/today')
     await screen.findByText('Nothing scheduled for this day.')
     expect(screen.queryByText(/Your data is only on this device/)).toBeNull()
+  })
+})
+
+describe('App (routes and header)', () => {
+  const title = (name: string) => screen.findByRole('heading', { level: 1, name })
+
+  it.each([
+    ['/today', 'Today'],
+    ['/meds', 'Meds'],
+    ['/history', 'History'],
+  ])('%s shows its title, marks its tab and offers Settings', async (path, name) => {
+    renderAt(path)
+    expect(await title(name)).toBeTruthy()
+    expect(screen.getByRole('link', { name }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+
+  it('Settings has a back button and no tab marked', async () => {
+    renderAt('/settings')
+    expect(await title('Settings')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()
+    for (const name of ['Today', 'Meds', 'History']) {
+      expect(screen.getByRole('link', { name }).getAttribute('aria-current')).toBeNull()
+    }
+    screen.getByRole('button', { name: 'Back' }).click()
+    expect(await title('Today')).toBeTruthy()
+  })
+
+  it('Add med is its own screen, and Back returns to the list', async () => {
+    renderAt('/meds')
+    ;(await screen.findByRole('button', { name: '+ Add' })).click()
+    expect(await title('Add med')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Meds' }).getAttribute('aria-current')).toBe('page')
+    screen.getByRole('button', { name: 'Back' }).click()
+    expect(await title('Meds')).toBeTruthy()
+  })
+
+  it('an unknown address goes to Today', async () => {
+    renderAt('/nope')
+    expect(await title('Today')).toBeTruthy()
   })
 })
 

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "tsc --noEmit && vite build",
     "build:pages": "npm run build && cp dist/index.html dist/404.html && touch dist/.nojekyll",
     "lint": "oxlint",

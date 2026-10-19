@@ -54,7 +54,7 @@ export default function MedCard({
         <button type="button" onClick={onEdit}>
           Edit
         </button>
-        <button type="button" onClick={onDelete}>
+        <button type="button" className="danger" onClick={onDelete}>
           Delete
         </button>
       </div>

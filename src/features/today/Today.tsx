@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Empty } from '../../components/states'
 import { avgDosesPerDay, daysLeft, refillState } from '../../../supabase/functions/_shared/refill'
 import { listDoses, setDoseStatus } from '../../data/doses'
 import { listMeds, listSchedules } from '../../data/meds'
@@ -141,7 +143,6 @@ export default function Today() {
 
   return (
     <main>
-      <h2>Today</h2>
       <GuestBanner guest={isGuest(user)} />
       {notifications !== null && notifications !== 'on' && (
         <section className="banner" aria-label="Notifications">
@@ -167,7 +168,9 @@ export default function Today() {
       {today && selected && <WeekStrip today={today} selected={selected} onSelect={setPicked} />}
       {profileError && !profile && <LoadError message={profileError} onRetry={retryProfile} />}
       {error && <p role="alert">{error}</p>}
-      {profile && doses.length === 0 && !error && <p className="muted">Nothing scheduled for this day.</p>}
+      {profile && doses.length === 0 && !error && (
+        <Empty action={meds.length === 0 && <Link to="/meds/new">Add a med</Link>}>Nothing scheduled for this day.</Empty>
+      )}
       {[...groups].map(([time, rows]) => (
         <section key={time}>
           <h3>{time}</h3>

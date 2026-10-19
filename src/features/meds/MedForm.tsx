@@ -83,7 +83,6 @@ export default function MedForm({
 
   return (
     <form className="stack" onSubmit={submit} noValidate>
-      <h3>{med ? 'Edit medication' : 'Add medication'}</h3>
       <NameAutocomplete
         value={name}
         onChange={(v) => {

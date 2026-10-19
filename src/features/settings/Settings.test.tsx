@@ -1,7 +1,15 @@
 import type { User } from '@supabase/supabase-js'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
+
+const renderSettings = () =>
+  render(
+    <MemoryRouter initialEntries={['/settings']}>
+      <Settings />
+    </MemoryRouter>,
+  )
 
 const m = vi.hoisted(() => ({
   session: { user: null as unknown },
@@ -63,7 +71,7 @@ beforeEach(() => {
 })
 
 const loaded = async () => {
-  render(<Settings />)
+  renderSettings()
   await screen.findByLabelText('Snooze length')
 }
 
@@ -199,7 +207,7 @@ describe('Settings', () => {
 
   it('shows an error with Retry when the profile cannot load', async () => {
     m.getProfile.mockRejectedValueOnce(new Error('offline'))
-    render(<Settings />)
+    renderSettings()
     expect((await screen.findByRole('alert')).textContent).toContain('offline')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await screen.findByLabelText('Snooze length')).toBeTruthy()
