@@ -41,6 +41,13 @@ export function todayIn(tz: string, now: number = Date.now()): string {
   )
 }
 
+/** The current 'HH:MM' (24h) in tz. */
+export function nowTimeIn(tz: string, now: number = Date.now()): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(
+    new Date(now),
+  )
+}
+
 /** 7 days centred on `centre`. */
 export function weekAround(centre: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(centre, i - 3))
@@ -48,4 +55,17 @@ export function weekAround(centre: string): string[] {
 
 export function timeLabel(iso: string, tz: string): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+}
+
+/** The `?date=` a non-today view carries, when it is a real YYYY-MM-DD; otherwise null (today). */
+export function dayParam(raw: string | null): string | null {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+  return addDays(raw, 0) === raw ? raw : null
+}
+
+const titleFormat = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** Header title for a picked day, e.g. "Tue, Oct 20". */
+export function dayTitle(date: string): string {
+  return titleFormat.format(new Date(`${date}T12:00:00Z`))
 }

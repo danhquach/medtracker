@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Suggestion } from '../autocomplete/sources'
+import type { Medication } from '../../lib/types'
 
 type Group = { items: Suggestion[]; state: 'idle' | 'loading' | 'error' | 'done' }
 const sugg = vi.hoisted(() => ({
@@ -27,6 +28,12 @@ const renderForm = () =>
 
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
 const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+/** The error text a field points at via aria-describedby. */
+const errorFor = (label: string) => {
+  const el = screen.getByLabelText(label)
+  expect(el.getAttribute('aria-invalid')).toBe('true')
+  return document.getElementById(el.getAttribute('aria-describedby')!)?.textContent
+}
 
 describe('MedForm', () => {
   it('picking a US suggestion with strengths shows strength chips and fills strength on tap', () => {
@@ -84,9 +91,11 @@ describe('MedForm', () => {
   it('weekdays schedule requires ≥1 day', async () => {
     renderForm()
     type('Name', 'Med')
-    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: 'weekdays' } })
+    fireEvent.change(screen.getByLabelText('How often'), { target: { value: 'weekdays' } })
     submit()
-    expect((await screen.findByRole('alert')).textContent).toMatch(/at least one day/i)
+    const days = screen.getByRole('group', { name: 'Days' })
+    expect(days.getAttribute('aria-invalid')).toBe('true')
+    expect(document.getElementById(days.getAttribute('aria-describedby')!)?.textContent).toMatch(/at least one day/i)
     expect(onSave).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Mon' }))
     submit()
@@ -97,16 +106,81 @@ describe('MedForm', () => {
   it('interval requires interval_days ≥ 2', async () => {
     renderForm()
     type('Name', 'Med')
-    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: 'interval' } })
+    fireEvent.change(screen.getByLabelText('How often'), { target: { value: 'interval' } })
     type('Every (days)', '1')
     submit()
-    expect((await screen.findByRole('alert')).textContent).toMatch(/2 or more days/i)
+    expect(errorFor('Every (days)')).toMatch(/2 or more days/i)
     expect(onSave).not.toHaveBeenCalled()
     type('Every (days)', '3')
     submit()
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     const sch = (onSave.mock.calls[0] as unknown as [unknown, Record<string, unknown>[]])[1][0]
     expect(sch).toMatchObject({ kind: 'interval', interval_days: 3, start_date: '2026-10-19' })
+  })
+
+  it('leads with Name, How often and Time; the rest sits under More details', () => {
+    renderForm()
+    const more = screen.getByText('More details').closest('details')!
+    expect(more.open).toBe(false)
+    for (const label of ['Strength', 'Form', 'Notes', 'Stock (units)', 'Refill threshold (days)'])
+      expect(more.contains(screen.getByLabelText(label))).toBe(true)
+    for (const label of ['Name', 'How often', 'Time 1']) expect(more.contains(screen.getByLabelText(label))).toBe(false)
+  })
+
+  it('shows each error beside its field, opens collapsed sections and focuses the first', () => {
+    renderForm()
+    type('Stock (units)', '-1')
+    submit()
+    expect(errorFor('Name')).toBe('Name is required')
+    expect(errorFor('Stock (units)')).toMatch(/Stock must be 0 or more/)
+    expect(screen.getByText('More details').closest('details')!.open).toBe(true)
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'))
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('stock and dose amount use a unit that fits the form', () => {
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Form'), { target: { value: 'liquid' } })
+    expect(screen.getByLabelText('Stock (mL)')).toBeTruthy()
+    expect(screen.getByLabelText('Amount per dose (mL)')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Form'), { target: { value: 'capsule' } })
+    expect(screen.getByLabelText('Stock (capsules)')).toBeTruthy()
+  })
+
+  describe('editing keeps stock changed elsewhere (MT-11)', () => {
+    const existing: Medication = {
+      id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,
+      stock: 10, refill_threshold_days: 7, notify: true, paused: false, refill_alerted_at: null,
+      created_at: '2026-10-19T00:00:00Z', updated_at: '2026-10-19T00:00:00Z',
+    }
+    const renderEdit = () =>
+      render(<MedForm med={existing} meds={[existing]} remoteSuggestions today="2026-10-19" onSave={onSave} onCancel={onCancel} />)
+    const savedMed = () => onSave.mock.calls[0]?.[0] as Record<string, unknown>
+
+    it('leaves stock out of the save when the field was not changed', async () => {
+      renderEdit()
+      type('Notes', 'with food')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', notes: 'with food' })
+      expect(savedMed()).not.toHaveProperty('stock')
+    })
+
+    it('sends stock when the user changed it', async () => {
+      renderEdit()
+      type('Stock (tablets)', '30')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', stock: 30 })
+    })
+
+    it('sends stock when the user cleared it to stop tracking', async () => {
+      renderEdit()
+      type('Stock (tablets)', '')
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(savedMed()).toMatchObject({ id: 'm1', stock: null })
+    })
   })
 
   it('surfaces a save failure in an alert', async () => {

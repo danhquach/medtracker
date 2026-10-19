@@ -70,12 +70,39 @@ describe('save_med', () => {
   })
 })
 
+describe('save_med keeps stock on edit (MT-11)', () => {
+  it('an edit without a stock key keeps a refill made meanwhile', async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med({ stock: 10 }), p_schedules: [daily] })
+    await a.client.rpc('add_stock', { p_med: id, p_qty: 5 })
+    const { stock: _stale, ...edit } = med({ id, notes: 'edited' })
+    expect((await a.client.rpc('save_med', { p_med: edit, p_schedules: [daily] })).error).toBeNull()
+    const row = (await admin().from('medications').select('stock, notes').eq('id', id).single()).data!
+    expect(row).toEqual({ stock: 15, notes: 'edited' })
+  })
+
+  it('an edit with a stock key still sets it, including null', async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med({ stock: 10 }), p_schedules: [] })
+    await a.client.rpc('save_med', { p_med: med({ id, stock: 3 }), p_schedules: [] })
+    expect((await admin().from('medications').select('stock').eq('id', id).single()).data!.stock).toBe(3)
+    await a.client.rpc('save_med', { p_med: med({ id, stock: null }), p_schedules: [] })
+    expect((await admin().from('medications').select('stock').eq('id', id).single()).data!.stock).toBeNull()
+  })
+})
+
 describe('add_stock', () => {
   it('adds, treats null as 0, rejects qty <= 0, rejects foreign med', async () => {
     const { data: id } = await a.client.rpc('save_med', { p_med: med({ stock: null }), p_schedules: [] })
     expect((await a.client.rpc('add_stock', { p_med: id, p_qty: 4 })).data).toBe(4)
     expect((await a.client.rpc('add_stock', { p_med: id, p_qty: 0 })).error).not.toBeNull()
     expect((await b.client.rpc('add_stock', { p_med: id, p_qty: 1 })).error).not.toBeNull()
+  })
+
+  it('rejects NaN and Infinity (MT-11)', async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med({ stock: 1 }), p_schedules: [] })
+    for (const p_qty of ['NaN', 'Infinity']) {
+      expect((await a.client.rpc('add_stock', { p_med: id, p_qty })).error?.code).toBe('22023')
+    }
+    expect((await admin().from('medications').select('stock').eq('id', id).single()).data!.stock).toBe(1)
   })
 
   it('concurrent calls both apply', async () => {

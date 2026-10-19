@@ -13,10 +13,11 @@ export async function listSchedules(): Promise<Schedule[]> {
   return data as Schedule[]
 }
 
+/** On edit, leave `stock` out to keep the current count (a refill or dose may have changed it meanwhile). */
 export type MedInput = Pick<
   Medication,
-  'name' | 'strength' | 'form' | 'notes' | 'units_per_dose' | 'stock' | 'refill_threshold_days' | 'notify'
-> & { id?: string }
+  'name' | 'strength' | 'form' | 'notes' | 'units_per_dose' | 'refill_threshold_days' | 'notify'
+> & { id?: string; stock?: Medication['stock'] }
 export type ScheduleInput = Pick<Schedule, 'kind' | 'times' | 'weekdays' | 'interval_days' | 'start_date' | 'end_date'>
 
 /** Atomic (one DB transaction): saves the med, replaces its schedules, regenerates its future doses. Returns the med id. */
@@ -40,7 +41,7 @@ export async function setPaused(id: string, paused: boolean): Promise<void> {
 
 /** Atomic stock += qty; untracked stock (null) starts at qty. Returns the new stock. */
 export async function addStock(id: string, qty: number): Promise<number> {
-  if (!(qty > 0)) throw new Error('Quantity must be greater than 0')
+  if (!(Number.isFinite(qty) && qty > 0)) throw new Error('Quantity must be greater than 0')
   const { data, error } = await supabase.rpc('add_stock', { p_med: id, p_qty: qty })
   if (error) throw error
   return data as number

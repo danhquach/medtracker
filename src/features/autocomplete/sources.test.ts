@@ -61,4 +61,19 @@ describe('sources', () => {
   it('mine returns empty under 3 chars', () => {
     expect(searchMine('ib', [{ name: 'Ibuprofen' } as Medication])).toEqual([])
   })
+
+  it('mine caps at 5', () => {
+    const meds = Array.from({ length: 8 }, (_, i) => ({ name: `Ibuprofen ${i}` }) as Medication)
+    expect(searchMine('ibu', meds).map((s) => s.name)).toEqual(meds.slice(0, 5).map((m) => m.name))
+  })
+
+  it.each([
+    ['dpd', searchDpd],
+    ['rxterms', searchRxTerms],
+  ])('%s rejects on an HTTP error', async (_name, search) => {
+    const json = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json } as unknown as Response))
+    await expect(search('ibu', new AbortController().signal)).rejects.toThrow('HTTP 503')
+    expect(json).not.toHaveBeenCalled()
+  })
 })

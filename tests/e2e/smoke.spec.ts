@@ -9,7 +9,7 @@ test('sign up, add a med, take the dose, see stock and history update', async ({
   const doseTime = tomorrow ? '12:00' : '23:59'
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Create a profile' }).click()
   await page.getByLabel('Email').fill(randomEmail())
   await page.getByLabel('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Create profile' }).click()
@@ -18,7 +18,8 @@ test('sign up, add a med, take the dose, see stock and history update', async ({
   await page.getByRole('link', { name: 'Meds' }).click()
   await page.getByRole('button', { name: '+ Add' }).click()
   await page.getByLabel('Name', { exact: true }).fill('Smoke Med')
-  await page.getByLabel('Stock', { exact: true }).fill('10')
+  await page.getByText('More details').click()
+  await page.getByLabel('Stock (units)').fill('10')
   await page.getByLabel('Time 1').fill(doseTime)
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Smoke Med')).toBeVisible()
@@ -33,7 +34,7 @@ test('sign up, add a med, take the dose, see stock and history update', async ({
   await expect(page.getByText('Resolved (1)')).toBeVisible()
 
   await page.getByRole('link', { name: 'Meds' }).click()
-  await expect(page.getByText('9 pills left')).toBeVisible()
+  await expect(page.getByText('9 units left')).toBeVisible()
 
   await page.getByRole('link', { name: 'History' }).click()
   if (!tomorrow) await expect(page.getByRole('img', { name: 'Taken' })).toBeVisible()

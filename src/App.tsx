@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, matchPath, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, matchPath, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { BackIcon, CalendarIcon, HistoryIcon, PillIcon, SettingsIcon } from './components/icons'
 import { Loading } from './components/states'
 import { bootSession } from './data/boot'
@@ -9,6 +9,7 @@ import History from './features/history/History'
 import MedsList from './features/meds/MedsList'
 import Settings from './features/settings/Settings'
 import Today from './features/today/Today'
+import { dayParam, dayTitle } from './features/today/dayRange'
 import { useGoBack } from './lib/useGoBack'
 import './theme.css'
 
@@ -38,7 +39,9 @@ const SCREENS: { path: string; title: string; back?: string }[] = [
 
 function AppHeader() {
   const { pathname } = useLocation()
+  const [params] = useSearchParams()
   const screen = SCREENS.find((s) => matchPath(s.path, pathname))
+  const day = screen?.path === '/today' ? dayParam(params.get('date')) : null
   const goBack = useGoBack(screen?.back ?? '/today')
   return (
     <header className="app-header">
@@ -47,7 +50,7 @@ function AppHeader() {
           <BackIcon />
         </button>
       )}
-      <h1>{screen?.title ?? 'MedTracker'}</h1>
+      <h1>{day ? dayTitle(day) : (screen?.title ?? 'MedTracker')}</h1>
       {screen?.path !== '/settings' && (
         <Link to="/settings" className="icon-button" aria-label="Settings">
           <SettingsIcon />

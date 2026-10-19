@@ -26,6 +26,32 @@ describe('useSuggestions', () => {
     expect(result.current.us).toEqual({ items: [], state: 'idle' })
   })
 
+  it('blank input → idle, no fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useSuggestions('   ', meds, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.ca.state).toBe('idle')
+    expect(result.current.us.state).toBe('idle')
+  })
+
+  it('padded input matches own meds and searches the trimmed name', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(res(url.includes('canada.ca') ? dpdBody([]) : rxBody([]))),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { result, rerender } = renderHook(({ q }) => useSuggestions(q, meds, true), { initialProps: { q: ' ibu ' } })
+    expect(result.current.mine.map((s) => s.name)).toEqual(['Ibuprofen'])
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [url] of fetchMock.mock.calls) expect(url).not.toMatch(/%20/)
+    rerender({ q: 'ibu' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.ca.state).toBe('done')
+  })
+
   it('remoteEnabled=false → no fetch, mine still shown', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -64,6 +90,66 @@ describe('useSuggestions', () => {
     expect(result.current.ca.state).toBe('error')
     expect(result.current.us.state).toBe('done')
     expect(result.current.us.items).toHaveLength(1)
+  })
+
+  it('us HTTP error → us.state=error, ca still done', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(url.includes('canada.ca') ? res(dpdBody(['A'])) : ({ ok: false, status: 500 } as Response)),
+      ),
+    )
+    const { result } = renderHook(() => useSuggestions('ibu', meds, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(result.current.us).toEqual({ items: [], state: 'error' })
+    expect(result.current.ca.state).toBe('done')
+    expect(result.current.ca.items.map((s) => s.name)).toEqual(['A'])
+  })
+
+  it('a cancelled lookup leaves no error behind', async () => {
+    // fetch rejects with AbortError once its signal is aborted, like the real one
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init!.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+          }),
+      ),
+    )
+    const { result, rerender } = renderHook(({ q }) => useSuggestions(q, meds, true), { initialProps: { q: 'ibu' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    rerender({ q: 'ibup' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    rerender({ q: 'ibu' })
+    expect(result.current.ca).toEqual({ items: [], state: 'loading' })
+    expect(result.current.us).toEqual({ items: [], state: 'loading' })
+  })
+
+  it('closing mid-debounce never fetches', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = renderHook(() => useSuggestions('ibu', meds, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(299) })
+    unmount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('closing mid-lookup aborts both requests', async () => {
+    const signals: AbortSignal[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        signals.push(init!.signal as AbortSignal)
+        return new Promise<Response>(() => {})
+      }),
+    )
+    const { unmount } = renderHook(() => useSuggestions('ibu', meds, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(signals).toHaveLength(2)
+    unmount()
+    expect(signals.every((s) => s.aborted)).toBe(true)
   })
 
   it('latest query wins', async () => {

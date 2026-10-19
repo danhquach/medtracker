@@ -36,6 +36,8 @@ describe('meds data', () => {
   })
   it('addStock uses add_stock and rejects qty <= 0', async () => {
     await expect(addStock('m1', 0)).rejects.toThrow()
+    await expect(addStock('m1', NaN)).rejects.toThrow()
+    await expect(addStock('m1', Infinity)).rejects.toThrow()
     expect(rpc).not.toHaveBeenCalled()
     await addStock('m1', 5)
     expect(rpc).toHaveBeenCalledWith('add_stock', { p_med: 'm1', p_qty: 5 })
