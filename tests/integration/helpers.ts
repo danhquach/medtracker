@@ -38,3 +38,7 @@ export async function newGuest(): Promise<{ client: SupabaseClient; id: string }
   if (error || !data.user) throw error ?? new Error('anonymous sign-in failed')
   return { client, id: data.user.id }
 }
+
+export function anon(): SupabaseClient {
+  return createClient(url, publishableKey, opts)
+}
