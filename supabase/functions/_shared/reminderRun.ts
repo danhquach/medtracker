@@ -34,15 +34,26 @@ export type Deps = {
   prune: (subId: string) => Promise<boolean>
   unclaim: (doseIds: string[]) => Promise<void>
   signToken: (c: { doseId: string; userId: string; exp: number }) => Promise<string>
-  refillMeds: () => Promise<RefillMed[]>
+  // One page of tracked meds ordered by id, starting after `afterId` (null = first page).
+  refillMeds: (afterId: string | null, limit: number) => Promise<RefillMed[]>
   markRefill: (medId: string, alerted: boolean) => Promise<void> // throws on write error
 }
 
-export type RunResult = { claimed: number; sent: number; pruned: number; unclaimed: number; errors: number }
+// sent = doses delivered to at least one device; refills = refill alerts delivered.
+export type RunResult = {
+  claimed: number
+  sent: number
+  refills: number
+  pruned: number
+  unclaimed: number
+  errors: number
+}
 
 const HOUR = 3600_000
 const DAY = 24 * HOUR
 export const CONCURRENCY = 5
+// Below PostgREST's default 1,000-row cap, so a page is never silently truncated.
+export const REFILL_PAGE = 500
 
 function localTime(iso: string, tz: string): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }).format(new Date(iso))
@@ -58,13 +69,15 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Prom
 }
 
 export async function runReminders(d: Deps): Promise<RunResult> {
-  const r: RunResult = { claimed: 0, sent: 0, pruned: 0, unclaimed: 0, errors: 0 }
+  const r: RunResult = { claimed: 0, sent: 0, refills: 0, pruned: 0, unclaimed: 0, errors: 0 }
   const subCache = new Map<string, Promise<{ id: string }[]>>()
   const subs = (u: string) => {
     let p = subCache.get(u)
     if (!p) subCache.set(u, (p = d.subsFor(u)))
     return p
   }
+  // One prune per dead sub, even when concurrent doses for the same user both see it gone.
+  const pruning = new Map<string, Promise<boolean>>()
 
   // Sends to every sub of a user; returns the individual results (gone subs are pruned).
   async function pushToUser(userId: string, payload: PushPayload): Promise<SendResult[]> {
@@ -73,12 +86,13 @@ export async function runReminders(d: Deps): Promise<RunResult> {
     for (const sub of list) {
       const res = await d.send(sub, payload)
       results.push(res)
-      if (res === 'ok') r.sent++
-      else if (res === 'gone' && (await d.prune(sub.id))) {
-        r.pruned++
-        const cur = await subs(userId)
-        subCache.set(userId, Promise.resolve(cur.filter((x) => x.id !== sub.id)))
-      }
+      if (res !== 'gone') continue
+      // Drop it from the cache synchronously (no await between read and write) so later sends skip it.
+      subCache.set(userId, subs(userId).then((cur) => cur.filter((x) => x.id !== sub.id)))
+      if (pruning.has(sub.id)) continue
+      const p = d.prune(sub.id)
+      pruning.set(sub.id, p)
+      if (await p) r.pruned++
     }
     return results
   }
@@ -115,8 +129,9 @@ export async function runReminders(d: Deps): Promise<RunResult> {
           body: x.strength ? `${x.strength}, due ${when}` : `Due ${when}`,
           actionToken,
         })
+        if (results.includes('ok')) r.sent++
         // Transient failure only: nothing delivered and at least one attempt hit a retryable error.
-        if (!results.includes('ok') && results.includes('error') && retryable(x)) toUnclaim.push(x.dose_id)
+        else if (results.includes('error') && retryable(x)) toUnclaim.push(x.dose_id)
       } catch {
         r.errors++
         if (retryable(x)) toUnclaim.push(x.dose_id)
@@ -133,30 +148,40 @@ export async function runReminders(d: Deps): Promise<RunResult> {
     }
   }
 
-  // Refill pass: alerted flag only set once at least one device accepted the push.
-  let meds: RefillMed[] = []
-  try {
-    meds = await d.refillMeds()
-  } catch {
-    r.errors++
-  }
-  for (const m of meds) {
+  // Refill pass, paged by id so it covers every tracked med. Alerted flag only set once at least
+  // one device accepted the push. A page read error stops the pass; the next run retries.
+  let after: string | null = null
+  for (;;) {
+    let meds: RefillMed[]
     try {
-      const state = refillState(m, m.schedules)
-      if (state === 'low' && m.refill_alerted_at === null && m.notify) {
-        const left = daysLeft(m.stock, m.units_per_dose, m.schedules.reduce((s, x) => s + avgDosesPerDay(x), 0))
-        const results = await pushToUser(m.user_id, {
-          type: 'refill',
-          tag: `refill-${m.id}`,
-          title: `${m.name} is running low`,
-          body: `About ${Math.round(left ?? 0)} days left. Time to refill.`,
-        })
-        if (results.includes('ok')) await d.markRefill(m.id, true)
-      } else if (state === 'ok' && m.refill_alerted_at !== null) {
-        await d.markRefill(m.id, false)
-      }
+      meds = await d.refillMeds(after, REFILL_PAGE)
     } catch {
       r.errors++
+      break
+    }
+    if (!meds.length) break
+    after = meds[meds.length - 1].id
+    for (const m of meds) {
+      try {
+        const state = refillState(m, m.schedules)
+        if (state === 'low' && m.refill_alerted_at === null && m.notify) {
+          const left = daysLeft(m.stock, m.units_per_dose, m.schedules.reduce((s, x) => s + avgDosesPerDay(x), 0))
+          const results = await pushToUser(m.user_id, {
+            type: 'refill',
+            tag: `refill-${m.id}`,
+            title: `${m.name} is running low`,
+            body: `About ${Math.round(left ?? 0)} days left. Time to refill.`,
+          })
+          if (results.includes('ok')) {
+            r.refills++
+            await d.markRefill(m.id, true)
+          }
+        } else if (state === 'ok' && m.refill_alerted_at !== null) {
+          await d.markRefill(m.id, false)
+        }
+      } catch {
+        r.errors++
+      }
     }
   }
   return r
