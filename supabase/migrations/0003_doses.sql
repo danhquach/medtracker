@@ -39,6 +39,7 @@ $$;
 -- Today and tomorrow in each user's own time zone, future times only (no backfill of earlier today).
 -- Security definer so it can call the internal generate_doses_for; a signed-in caller is always
 -- restricted to their own rows. Cron / service role (auth.uid() null) may pass null for all users.
+-- Single-user runs re-raise errors; only the all-users batch swallows per-user failures (WARNING).
 create function public.generate_doses(p_user uuid default null) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -47,18 +48,26 @@ declare
   today date;
   target uuid := case when auth.uid() is null then p_user else auth.uid() end;
 begin
+  if target is null and coalesce(auth.role(), '') = 'authenticated' then
+    raise exception 'all-users generation is not permitted for signed-in callers' using errcode = '42501';
+  end if;
   for r in
     select p.user_id, p.time_zone
     from public.profiles p
     where (target is null or p.user_id = target)
       and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p.time_zone)
   loop
-    begin
+    if target is not null then
       today := (now() at time zone r.time_zone)::date;
       total := total + public.generate_doses_for(r.user_id, today, today + 1, now());
-    exception when others then
-      raise warning 'generate_doses skipped user %: %', r.user_id, sqlerrm;
-    end;
+    else
+      begin
+        today := (now() at time zone r.time_zone)::date;
+        total := total + public.generate_doses_for(r.user_id, today, today + 1, now());
+      exception when others then
+        raise warning 'generate_doses skipped user %: %', r.user_id, sqlerrm;
+      end;
+    end if;
   end loop;
   return total;
 end;

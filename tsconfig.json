@@ -20,6 +20,7 @@
   "include": [
     "src",
     "supabase/functions/_shared/refill.ts",
-    "supabase/functions/_shared/actionToken.ts"
+    "supabase/functions/_shared/actionToken.ts",
+    "supabase/functions/_shared/pushPolicy.ts"
   ]
 }

@@ -1,0 +1,58 @@
+-- Reminder claiming and snooze.
+
+-- Atomically claim due doses for sending: concurrent runs never claim the same dose.
+-- Re-checks notify/paused at claim time. Service role / cron only.
+create function public.claim_due_doses()
+returns table (
+  dose_id uuid, user_id uuid, medication_id uuid, med_name text, strength text, scheduled_for timestamptz
+)
+language plpgsql security invoker set search_path = '' as $$
+#variable_conflict use_column
+begin
+  return query
+  with due as (
+    select de.id
+    from public.dose_events de
+    join public.medications m on m.id = de.medication_id and m.user_id = de.user_id
+    where de.status = 'pending'
+      and m.notify
+      and not m.paused
+      and ((de.notified_at is null and de.scheduled_for <= now()) or de.snoozed_until <= now())
+    order by de.scheduled_for
+    for update of de skip locked
+  ),
+  upd as (
+    update public.dose_events de
+    set notified_at = now(), snoozed_until = null
+    from due
+    where de.id = due.id
+    returning de.id, de.user_id, de.medication_id, de.scheduled_for
+  )
+  select upd.id, upd.user_id, upd.medication_id, m.name, m.strength, upd.scheduled_for
+  from upd
+  join public.medications m on m.id = upd.medication_id
+  order by upd.scheduled_for;
+end;
+$$;
+
+-- Security invoker: RLS applies when a user calls it. dose-action calls it with the service role
+-- after verifying the action token. Returns null when the dose is missing or not pending.
+create function public.snooze_dose(p_dose uuid, p_minutes int) returns public.dose_events
+language plpgsql security invoker set search_path = '' as $$
+declare
+  d public.dose_events;
+begin
+  if p_minutes is null or p_minutes not in (5, 10, 15, 30, 60) then
+    raise exception 'invalid snooze minutes: %', p_minutes using errcode = '22023';
+  end if;
+  update public.dose_events
+  set snoozed_until = now() + make_interval(mins => p_minutes)
+  where id = p_dose and status = 'pending'
+  returning * into d;
+  return d;
+end;
+$$;
+
+revoke execute on function public.claim_due_doses() from public, anon, authenticated;
+revoke execute on function public.snooze_dose(uuid, int) from public, anon;
+grant execute on function public.snooze_dose(uuid, int) to authenticated;
