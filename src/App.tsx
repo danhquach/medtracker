@@ -3,6 +3,7 @@ import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
 import { bootSession } from './data/boot'
 import Welcome from './features/auth/Welcome'
 import { useSession } from './features/auth/useSession'
+import MedsList from './features/meds/MedsList'
 import SettingsStub from './features/settings/SettingsStub'
 import Today from './features/today/Today'
 import './theme.css'
@@ -45,7 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/today" replace />} />
           <Route path="/today" element={<Today />} />
-          <Route path="/meds" element={<Page title="Meds" />} />
+          <Route path="/meds" element={<MedsList />} />
           <Route path="/history" element={<Page title="History" />} />
           <Route path="/settings" element={<SettingsStub />} />
         </Routes>

@@ -185,3 +185,71 @@ input {
   cursor: pointer;
   margin-bottom: 8px;
 }
+
+.chip-low {
+  background: var(--accent);
+}
+
+.med-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.med-card.is-paused {
+  opacity: 0.5;
+}
+
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  border-radius: 999px;
+  padding: 12px 20px;
+}
+
+select,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+}
+
+fieldset {
+  border: 1px solid var(--text-muted);
+  border-radius: 8px;
+}
+
+.suggestions {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 4px;
+}
+
+.suggestions h4 {
+  margin: 4px 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.suggestions li button {
+  width: 100%;
+  text-align: left;
+}
