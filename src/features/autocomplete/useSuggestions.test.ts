@@ -101,4 +101,35 @@ describe('useSuggestions', () => {
     rerender({ q: 'ibup' })
     expect(signals[0].aborted).toBe(true)
   })
+
+  it('changing q hides old items immediately (same-active)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(res(url.includes('canada.ca') ? dpdBody([new URL(url).searchParams.get('brandname')!]) : rxBody([]))),
+      ),
+    )
+    const { result, rerender } = renderHook(({ q }) => useSuggestions(q, meds, true), { initialProps: { q: 'ibu' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(result.current.ca.items.map((s) => s.name)).toEqual(['ibu'])
+    rerender({ q: 'ibup' })
+    expect(result.current.ca.items).toEqual([])
+    expect(result.current.ca.state).toBe('loading')
+  })
+
+  it('re-activation does not show old query results', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(res(url.includes('canada.ca') ? dpdBody(['IBU-RESULT']) : rxBody(['IBU-US']))),
+      ),
+    )
+    const { result, rerender } = renderHook(({ q }) => useSuggestions(q, meds, true), { initialProps: { q: 'ibu' } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    rerender({ q: 'ib' })
+    expect(result.current.ca.state).toBe('idle')
+    rerender({ q: 'asp' })
+    expect(result.current.ca.items).toEqual([])
+    expect(result.current.us.items).toEqual([])
+  })
 })
