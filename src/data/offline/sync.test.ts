@@ -138,6 +138,19 @@ describe('sync engine', () => {
     expect(await outbox()).toEqual([])
   })
 
+  it('an op submitted during a running flush is sent by that flush', async () => {
+    let release!: () => void
+    rpc.mockImplementationOnce(() => new Promise((r) => (release = () => r({ data: 1, error: null })))).mockImplementation(() => ok(1))
+    const first = sync.submit(addStock(1), stockOf)
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1))
+    const second = sync.submit(addStock(2), stockOf)
+    await new Promise((r) => setTimeout(r, 20)) // second is queued while the first is in flight
+    release()
+    await Promise.all([first, second])
+    expect(rpc.mock.calls.map((c) => c[1].p_op)).toEqual(['op1', 'op2'])
+    expect(await outbox()).toEqual([])
+  })
+
   it('concurrent flush calls run the queue once', async () => {
     rpc.mockImplementation(offline)
     await sync.submit(addStock(1), stockOf)

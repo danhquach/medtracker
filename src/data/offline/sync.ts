@@ -128,31 +128,36 @@ async function run(): Promise<void> {
   await emit({ syncing: true })
   let sent = false
   let patch: Partial<SyncStatus> = { online: true, needsSignIn: false }
-  for (const item of await store.list()) {
-    if (item.state !== 'pending') continue
-    if (!(await stillSignedIn(userId))) {
-      await emit({ syncing: false })
-      return
-    }
-    try {
-      await send(item.op)
-      await store.remove(item.seq)
-      results.set(item.op.opId, { ok: true })
-      sent = true
-    } catch (e) {
-      const kind = classify(e)
-      if (kind === 'network') {
-        patch = { online: false }
-        break
+  // Re-read the outbox until nothing new is pending, so ops queued during this run go out with it.
+  const tried = new Set<number>()
+  let stop = false
+  for (;;) {
+    const batch = (await store.list()).filter((i) => i.state === 'pending' && !tried.has(i.seq))
+    if (stop || batch.length === 0) break
+    for (const item of batch) {
+      tried.add(item.seq)
+      if (!(await stillSignedIn(userId))) {
+        await emit({ syncing: false })
+        return
       }
-      if (kind === 'auth') {
-        patch = { needsSignIn: true }
-        break
+      try {
+        await send(item.op)
+        await store.remove(item.seq)
+        results.set(item.op.opId, { ok: true })
+        sent = true
+      } catch (e) {
+        const kind = classify(e)
+        if (kind === 'network' || kind === 'auth' || kind === 'retry') {
+          // Stays pending, in order; the next flush tries again. 'retry' (5xx/429) isn't offline.
+          if (kind === 'network') patch = { online: false }
+          if (kind === 'auth') patch = { needsSignIn: true }
+          stop = true
+          break
+        }
+        await store.update({ ...item, state: 'failed', error: (e as ErrorLike).message ?? String(e), tries: item.tries + 1 })
+        results.set(item.op.opId, { ok: false, error: e })
+        sent = true
       }
-      if (kind === 'retry') break // stays pending; the next flush tries again
-      await store.update({ ...item, state: 'failed', error: (e as ErrorLike).message ?? String(e), tries: item.tries + 1 })
-      results.set(item.op.opId, { ok: false, error: e })
-      sent = true
     }
   }
   if (sent && (await stillSignedIn(userId))) {
