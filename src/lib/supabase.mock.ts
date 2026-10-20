@@ -58,7 +58,8 @@ const profile = () => mine('profiles')[0] as unknown as Profile | undefined
 const hhmmss = (t: string) => (t.length === 5 ? `${t}:00` : t)
 
 // generate_doses_for: today and tomorrow, future times only; earlier local days roll over to missed.
-function generateDoses() {
+// backfill (save_med, MT-39): also today's already-passed times for one med, except skipTimes, with no reminder.
+function generateDoses(backfill?: { medId: string; skipTimes: string[] }) {
   const p = profile()
   if (!p) return
   const tz = p.time_zone
@@ -75,6 +76,7 @@ function generateDoses() {
     for (const s of scheds) {
       const m = meds.find((x) => x.id === s.medication_id)
       if (!m || m.paused || s.kind === 'prn') continue
+      const backfillToday = day === today && backfill?.medId === m.id
       if ((s.start_date && day < s.start_date) || (s.end_date && day > s.end_date)) continue
       if (s.kind === 'weekdays' && !s.weekdays?.includes(isoDow)) continue
       if (s.kind === 'interval') {
@@ -86,7 +88,7 @@ function generateDoses() {
         const [h, mi] = t.split(':').map(Number)
         const at = midnight + h * 3_600_000 + mi * 60_000
         const scheduled_for = new Date(at).toISOString()
-        if (at <= nowMs) continue
+        if (at <= nowMs && !(backfillToday && !backfill.skipTimes.includes(hhmmss(t)))) continue
         if (db.tables.dose_events.some((d) => d.medication_id === m.id && d.scheduled_for === scheduled_for)) continue
         db.tables.dose_events.push({
           id: crypto.randomUUID(),
@@ -95,7 +97,7 @@ function generateDoses() {
           scheduled_for,
           status: 'pending',
           acted_at: null,
-          notified_at: null,
+          notified_at: at <= nowMs ? now() : null,
           snoozed_until: null,
         } satisfies DoseEvent)
       }
@@ -103,13 +105,13 @@ function generateDoses() {
   }
 }
 
-function regenerate(medId?: string) {
+function regenerate(medId?: string, backfill?: { medId: string; skipTimes: string[] }) {
   const cutoff = now()
   db.tables.dose_events = db.tables.dose_events.filter(
     (d) =>
       !(d.user_id === uid() && (!medId || d.medication_id === medId) && d.status === 'pending' && !d.notified_at && (d.scheduled_for as string) > cutoff),
   )
-  generateDoses()
+  generateDoses(backfill)
 }
 
 function changeStock(medId: unknown, delta: number) {
@@ -142,11 +144,12 @@ const rpcs: Record<string, (a: Row) => Result> = {
       id = crypto.randomUUID()
       db.tables.medications.push({ ...input, id, user_id: uid(), paused: false, refill_alerted_at: null, created_at: now(), updated_at: now() })
     }
+    const skipTimes = (db.tables.schedules.filter((s) => s.medication_id === id) as unknown as Schedule[]).flatMap((s) => s.times.map(hhmmss))
     db.tables.schedules = db.tables.schedules.filter((s) => s.medication_id !== id)
     for (const s of a.p_schedules as Row[]) {
       db.tables.schedules.push({ ...s, times: ((s.times as string[]) ?? []).map(hhmmss), id: crypto.randomUUID(), user_id: uid(), medication_id: id })
     }
-    regenerate(id)
+    regenerate(id, { medId: id, skipTimes })
     return ok(id)
   },
   add_stock: (a) => {
