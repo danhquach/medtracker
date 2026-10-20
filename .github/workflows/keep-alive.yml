@@ -1,0 +1,28 @@
+name: Keep Supabase awake
+
+# Free Supabase projects pause after about a week without API traffic, and
+# pg_cron (reminders, dose generation) stops with them. One cheap anon REST
+# query a day counts as traffic. RLS returns [] for anon, so no data is read.
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    name: Ping Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the REST API
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --max-time 30 \
+            "$SUPABASE_URL/rest/v1/medications?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY")
+          echo "HTTP $code"
+          test "$code" = 200
