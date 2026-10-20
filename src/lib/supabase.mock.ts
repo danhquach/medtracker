@@ -46,6 +46,7 @@ function startUser(user: Omit<MockUser, 'id' | 'user_metadata'> & { user_metadat
     user_id: id,
     nickname: null,
     time_zone: 'America/Toronto',
+    time_zone_chosen: false,
     snooze_minutes: 10,
     suggestions_enabled: true,
     password_set: !user.is_anonymous,
@@ -206,6 +207,7 @@ const rpcs: Record<string, (a: Row) => Result> = {
     for (const k of ['nickname', 'time_zone', 'snooze_minutes', 'suggestions_enabled'] as const) {
       if (k in patch) Object.assign(p, { [k]: patch[k] })
     }
+    if ('time_zone' in patch) p.time_zone_chosen = true
     if (p.time_zone !== beforeTz) regenerate()
     return ok({ ...p })
   },

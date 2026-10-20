@@ -46,6 +46,8 @@ export interface Profile {
   user_id: string
   nickname: string | null
   time_zone: string
+  /** Set on purpose (or by the first auto-detect); auto-detect never changes it after. */
+  time_zone_chosen: boolean
   snooze_minutes: 5 | 10 | 15 | 30 | 60
   suggestions_enabled: boolean
   password_set: boolean

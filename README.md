@@ -149,6 +149,15 @@ Reminders not arriving:
   - Reminders late? In Android settings, set Chrome's battery use to Unrestricted.
 - **iOS:** push works only after Add to Home Screen (Safari share sheet) and needs iOS 16.4+. Enable push once from inside the installed app.
 
+## Daylight saving
+
+Dose times follow the profile's time zone (`0013_time_zones.sql`; the offline client matches it):
+
+- A time skipped when clocks spring forward moves forward by the gap: 02:30 becomes 03:30.
+- A time that happens twice when clocks fall back is the second one, after the change.
+- A med has one dose per instant, so 02:00 and 03:00 on a spring-forward day give one dose that day.
+- Auto-detect adopts a device's zone only until a zone is set; after that, only Settings changes it.
+
 ## Known risks
 
 - Android battery optimization can delay pushes (tip above).
