@@ -153,28 +153,27 @@ declare
   uid uuid := auth.uid();
   s jsonb;
   old_times time[];
-  owner text;
 begin
   if uid is null then
     raise exception 'not signed in' using errcode = '42501';
   end if;
   if med_id is null or p_create then
-    if med_id is not null then
-      -- RLS hides other users' rows, so ask without it whether the id is taken.
-      owner := public.medication_owner(med_id);
-      if owner = 'mine' then
-        return med_id; -- replay of a create that already landed
-      elsif owner = 'other' then
-        raise exception 'medication id belongs to another user' using errcode = '42501';
+    begin
+      insert into public.medications (id, user_id, name, strength, form, notes, units_per_dose, stock, refill_threshold_days, notify)
+      values (
+        coalesce(med_id, gen_random_uuid()), uid, p_med->>'name', p_med->>'strength', p_med->>'form', p_med->>'notes',
+        (p_med->>'units_per_dose')::numeric, (p_med->>'stock')::numeric,
+        (p_med->>'refill_threshold_days')::int, (p_med->>'notify')::bool
+      )
+      returning id into med_id;
+    exception when unique_violation then
+      -- The client id is taken. Ours (RLS shows only our rows): a replay of a create that already
+      -- landed, so leave it as it is. Someone else's: refuse.
+      if exists (select 1 from public.medications where id = med_id and user_id = uid) then
+        return med_id;
       end if;
-    end if;
-    insert into public.medications (id, user_id, name, strength, form, notes, units_per_dose, stock, refill_threshold_days, notify)
-    values (
-      coalesce(med_id, gen_random_uuid()), uid, p_med->>'name', p_med->>'strength', p_med->>'form', p_med->>'notes',
-      (p_med->>'units_per_dose')::numeric, (p_med->>'stock')::numeric,
-      (p_med->>'refill_threshold_days')::int, (p_med->>'notify')::bool
-    )
-    returning id into med_id;
+      raise exception 'medication id belongs to another user' using errcode = '42501';
+    end;
   else
     update public.medications set
       name = p_med->>'name', strength = p_med->>'strength', form = p_med->>'form', notes = p_med->>'notes',
@@ -208,14 +207,6 @@ begin
   perform public.backfill_today_doses(med_id, old_times);
   return med_id;
 end;
-$$;
-
--- Whose med id this is, regardless of RLS: 'mine', 'other', or null if unused. Never returns
--- the other user's id. save_med (security invoker) calls it, so authenticated may execute it.
-create function public.medication_owner(p_med uuid) returns text
-language sql stable security definer set search_path = '' as $$
-  select case when m.user_id = auth.uid() then 'mine' else 'other' end
-  from public.medications m where m.id = p_med
 $$;
 
 -- Pause/resume in one call (was a table update plus a separate regenerate RPC).
@@ -258,7 +249,6 @@ end;
 $$;
 
 revoke execute on function public.clamp_client_time(timestamptz) from public, anon;
-revoke execute on function public.medication_owner(uuid) from public, anon;
 revoke execute on function public.set_dose_status(uuid, text, timestamptz) from public, anon;
 revoke execute on function public.set_dose_status_at(uuid, timestamptz, text, timestamptz) from public, anon;
 revoke execute on function public.log_prn_dose(uuid, uuid, timestamptz) from public, anon;
@@ -268,7 +258,6 @@ revoke execute on function public.set_paused(uuid, boolean) from public, anon;
 revoke execute on function public.update_profile(jsonb) from public, anon;
 
 grant execute on function public.clamp_client_time(timestamptz) to authenticated;
-grant execute on function public.medication_owner(uuid) to authenticated;
 grant execute on function public.set_dose_status(uuid, text, timestamptz) to authenticated;
 grant execute on function public.set_dose_status_at(uuid, timestamptz, text, timestamptz) to authenticated;
 grant execute on function public.log_prn_dose(uuid, uuid, timestamptz) to authenticated;
