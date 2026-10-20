@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
+import { addDays, todayIn } from './dayRange'
 
 const api = vi.hoisted(() => ({
   profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
@@ -68,6 +69,32 @@ const renderToday = () =>
 const where = () => screen.getByTestId('where').textContent
 
 describe('Today', () => {
+  it('a day after tomorrow previews its scheduled doses, with nothing to mark (until paused)', async () => {
+    const later = addDays(todayIn('America/Toronto'), 3)
+    const view = render(
+      <MemoryRouter initialEntries={[`/today?date=${later}`]}>
+        <Routes>
+          <Route path="/today" element={<Today />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: '9:00 AM' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Aspirin 81 mg.*Upcoming/ }).getAttribute('href')).toBe('/history/m1')
+    expect(screen.queryByRole('button', { name: /^Taken/ })).toBeNull()
+    expect(screen.queryByText(/taken$/)).toBeNull()
+    view.unmount()
+
+    api.meds = [{ ...med, paused: true }]
+    render(
+      <MemoryRouter initialEntries={[`/today?date=${later}`]}>
+        <Routes>
+          <Route path="/today" element={<Today />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Nothing scheduled for this day.')).toBeTruthy()
+  })
+
   it('groups doses by local time; a taken dose stays in place and links to its History', async () => {
     renderToday()
     expect(await screen.findByRole('heading', { name: '9:00 AM' })).toBeTruthy()

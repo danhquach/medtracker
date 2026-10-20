@@ -12,8 +12,9 @@ import { useSession } from '../auth/useSession'
 import { closeDoseNotification, closeStaleNotifications } from '../../push/closeStale'
 import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
-import { dayParam, localDayRange, timeLabel, todayIn } from './dayRange'
-import DoseRow from './DoseRow'
+import { timeText, upcomingDoses } from '../meds/summary'
+import { addDays, dayParam, localDayRange, timeLabel, todayIn } from './dayRange'
+import DoseRow, { UpcomingRow } from './DoseRow'
 import NeedsAttention from './NeedsAttention'
 import WeekStrip from './WeekStrip'
 
@@ -151,6 +152,15 @@ export default function Today() {
     const key = timeLabel(d.scheduled_for, tz!)
     groups.set(key, [...(groups.get(key) ?? []), d])
   }
+  // Dose rows exist only through tomorrow; a later day previews its schedule until paused or stopped.
+  const preview = !!today && !!selected && selected > addDays(today, 1)
+  const upcoming = new Map<string, Medication[]>()
+  if (preview) {
+    for (const { med, time } of upcomingDoses(meds, schedules, selected)) {
+      upcoming.set(timeText(time), [...(upcoming.get(timeText(time)) ?? []), med])
+    }
+  }
+  const nothing = preview ? upcoming.size === 0 : doses.length === 0
   const taken = doses.filter((d) => d.status === 'taken').length
   const low = meds.flatMap((m) => {
     const own = schedules.filter((s) => s.medication_id === m.id)
@@ -165,15 +175,25 @@ export default function Today() {
       {profileError && !profile && <LoadError message={profileError} onRetry={retryProfile} />}
       {error && <p role="alert">{error}</p>}
       {profile && !loaded && !error && <Loading />}
-      {profile && loaded && doses.length === 0 && !error && (
+      {profile && loaded && nothing && !error && (
         <Empty action={meds.length === 0 && <Link to="/meds/new">Add a med</Link>}>Nothing scheduled for this day.</Empty>
       )}
-      {doses.length > 0 && (
+      {!preview && doses.length > 0 && (
         <p className="progress" aria-live="polite">
           {taken} of {doses.length} taken
         </p>
       )}
-      {[...groups].map(([time, rows]) => (
+      {[...upcoming].map(([time, rows]) => (
+        <section key={time}>
+          <h3>{time}</h3>
+          <ul className="dose-list">
+            {rows.map((m) => (
+              <UpcomingRow key={m.id} med={m} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {!preview && [...groups].map(([time, rows]) => (
         <section key={time}>
           <h3>{time}</h3>
           <ul className="dose-list">

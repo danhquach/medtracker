@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Medication, Schedule } from '../../lib/types'
 import MedCard from './MedCard'
-import { nextDoseText, scheduleSummary } from './summary'
+import { isStopped, nextDoseText, scheduleSummary, upcomingDoses } from './summary'
 
 const med = (p: Partial<Medication> = {}): Medication => ({
   id: 'm1', user_id: 'u', name: 'Aspirin', strength: '81 mg', form: 'tablet', notes: null, units_per_dose: 1,
@@ -15,7 +15,7 @@ const sch = (p: Partial<Schedule>): Schedule => ({
 })
 const noop = () => {}
 const card = (m: Medication, s: Schedule[], over: Partial<Parameters<typeof MedCard>[0]> = {}) =>
-  render(<ul><MedCard med={m} schedules={s} onEdit={noop} onDelete={noop} onPause={noop} onLogDose={noop} onRefill={noop} onHistory={noop} {...over} /></ul>)
+  render(<ul><MedCard med={m} schedules={s} onEdit={noop} onDelete={noop} onPause={noop} onLogDose={noop} onRefill={noop} onHistory={noop} stopped={false} onStop={noop} {...over} /></ul>)
 
 describe('scheduleSummary', () => {
   it('formats every kind', () => {
@@ -24,6 +24,47 @@ describe('scheduleSummary', () => {
     expect(scheduleSummary([sch({ kind: 'interval', interval_days: 3, times: ['09:00:00'] })])).toBe('Every 3 days — 9:00 AM')
     expect(scheduleSummary([sch({ kind: 'prn', times: [] })])).toBe('As needed')
     expect(scheduleSummary([sch({ times: ['00:30:00', '13:05:00'] })])).toBe('Daily — 12:30 AM, 1:05 PM')
+  })
+})
+
+describe('upcomingDoses', () => {
+  it('lists the day\'s doses by time, mirroring the generator; paused, ended and as-needed give none', () => {
+    const a = med({ id: 'a', name: 'B-med' })
+    const b = med({ id: 'b', name: 'A-med' })
+    const out = upcomingDoses(
+      [a, b, med({ id: 'p', paused: true }), med({ id: 'e' }), med({ id: 'n' })],
+      [
+        sch({ medication_id: 'a', times: ['21:00:00', '08:00:00'] }),
+        sch({ medication_id: 'b', times: ['08:00:00'] }),
+        sch({ medication_id: 'p' }),
+        sch({ medication_id: 'e', end_date: '2026-10-21' }),
+        sch({ medication_id: 'n', kind: 'prn', times: [] }),
+      ],
+      '2026-10-22',
+    )
+    expect(out.map((d) => `${d.time} ${d.med.name}`)).toEqual(['08:00 A-med', '08:00 B-med', '21:00 B-med'])
+  })
+})
+
+describe('isStopped', () => {
+  it('is true once every recurring schedule ends by today', () => {
+    expect(isStopped([sch({ end_date: '2026-10-19' })], '2026-10-19')).toBe(true)
+    expect(isStopped([sch({ end_date: '2026-10-20' })], '2026-10-19')).toBe(false)
+    expect(isStopped([sch({}), sch({ end_date: '2026-10-01' })], '2026-10-19')).toBe(false)
+    expect(isStopped([sch({ kind: 'prn', times: [] })], '2026-10-19')).toBe(false)
+  })
+})
+
+describe('MedCard Stop', () => {
+  it('offers Stop for a recurring med; a stopped med shows Stopped instead', () => {
+    const onStop = vi.fn()
+    const view = card(med(), [sch({})], { onStop })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop…' }))
+    expect(onStop).toHaveBeenCalled()
+    view.unmount()
+    card(med(), [sch({ end_date: '2026-10-19' })], { stopped: true })
+    expect(screen.getByText('Stopped')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull()
   })
 })
 

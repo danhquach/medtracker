@@ -147,6 +147,27 @@ describe('MedForm', () => {
     expect(screen.getByLabelText('Stock (capsules)')).toBeTruthy()
   })
 
+  it('editing a med offers Pause, Stop and Delete; a new med does not', () => {
+    const m: Medication = {
+      id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,
+      stock: null, refill_threshold_days: 7, notify: true, paused: false, refill_alerted_at: null, created_at: '', updated_at: '',
+    }
+    const daily = { id: 's', user_id: 'u1', medication_id: 'm1', kind: 'daily' as const, times: ['09:00:00'], weekdays: null, interval_days: null, start_date: null, end_date: null }
+    const manage = { onPause: vi.fn(), onStop: vi.fn(), onDelete: vi.fn() }
+    const view = render(
+      <MedForm med={m} schedules={[daily]} meds={[m]} remoteSuggestions today="2026-10-19" onSave={onSave} onCancel={onCancel} manage={manage} />,
+    )
+    const group = within(screen.getByRole('group', { name: 'Manage medication' }))
+    fireEvent.click(group.getByRole('button', { name: 'Pause' }))
+    fireEvent.click(group.getByRole('button', { name: 'Stop…' }))
+    fireEvent.click(group.getByRole('button', { name: 'Delete…' }))
+    expect([manage.onPause, manage.onStop, manage.onDelete].every((f) => f.mock.calls.length === 1)).toBe(true)
+    expect(onSave).not.toHaveBeenCalled()
+    view.unmount()
+    renderForm()
+    expect(screen.queryByRole('group', { name: 'Manage medication' })).toBeNull()
+  })
+
   describe('editing keeps stock changed elsewhere (MT-11)', () => {
     const existing: Medication = {
       id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,

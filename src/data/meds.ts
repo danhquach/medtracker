@@ -32,6 +32,22 @@ export async function deleteMed(id: string): Promise<void> {
   if (error) throw error
 }
 
+/** Ends the med's recurring schedules after today: no more doses, history kept. */
+export async function stopMed(med: Medication, schedules: Schedule[], today: string): Promise<void> {
+  const { id, name, strength, form, notes, units_per_dose, refill_threshold_days, notify } = med
+  await saveMed(
+    { id, name, strength, form, notes, units_per_dose, refill_threshold_days, notify },
+    schedules.map(({ kind, times, weekdays, interval_days, start_date, end_date }) => ({
+      kind,
+      times,
+      weekdays,
+      interval_days,
+      start_date,
+      end_date: kind === 'prn' || (end_date && end_date <= today) ? end_date : today,
+    })),
+  )
+}
+
 export async function setPaused(id: string, paused: boolean): Promise<void> {
   const { error } = await supabase.from('medications').update({ paused }).eq('id', id)
   if (error) throw error

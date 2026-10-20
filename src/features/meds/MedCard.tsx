@@ -12,6 +12,8 @@ export default function MedCard({
   onLogDose,
   onRefill,
   onHistory,
+  stopped,
+  onStop,
 }: {
   med: Medication
   schedules: Schedule[]
@@ -21,6 +23,9 @@ export default function MedCard({
   onLogDose: () => void
   onRefill: (qty: number) => void
   onHistory: () => void
+  /** Every recurring schedule has ended (see isStopped). */
+  stopped: boolean
+  onStop: () => void
 }) {
   const [refilling, setRefilling] = useState(false)
   const [qty, setQty] = useState('')
@@ -29,6 +34,7 @@ export default function MedCard({
   const qtyNum = Number(qty)
   // As-needed meds lead with Log dose; everything else leads with Edit.
   const logFirst = schedules.some((s) => s.kind === 'prn') && !med.paused
+  const canStop = !stopped && schedules.some((s) => s.kind !== 'prn')
   const unit = stockUnit(med.form, 2)
 
   /** Run a menu item and close the menu. */
@@ -44,7 +50,7 @@ export default function MedCard({
         {med.strength && <span className="muted"> {med.strength}</span>}
       </div>
       <div className="muted">{scheduleSummary(schedules)}</div>
-      {(med.stock !== null || med.paused) && (
+      {(med.stock !== null || med.paused || stopped) && (
         <div>
           {med.stock !== null && (
             <span className={`chip${low ? ' chip-low' : ''}`}>
@@ -52,6 +58,7 @@ export default function MedCard({
             </span>
           )}
           {med.paused && <span className="chip">Paused</span>}
+          {stopped && <span className="chip">Stopped</span>}
         </div>
       )}
       <div className="row card-actions">
@@ -81,6 +88,11 @@ export default function MedCard({
             <button type="button" onClick={choose(onHistory)}>
               History
             </button>
+            {canStop && (
+              <button type="button" onClick={choose(onStop)}>
+                Stop…
+              </button>
+            )}
             <hr />
             <button type="button" className="danger" onClick={choose(onDelete)}>
               Delete…

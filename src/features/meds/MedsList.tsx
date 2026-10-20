@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { Empty, Loading } from '../../components/states'
 import { logPrnDose } from '../../data/doses'
-import { addStock, deleteMed, listMeds, listSchedules, saveMed, setPaused, type MedInput, type ScheduleInput } from '../../data/meds'
+import { addStock, deleteMed, listMeds, listSchedules, saveMed, setPaused, stopMed, type MedInput, type ScheduleInput } from '../../data/meds'
 import { DEFAULT_TIME_ZONE } from '../../data/profile'
 import type { Medication, Schedule } from '../../lib/types'
 import { useGoBack } from '../../lib/useGoBack'
@@ -11,7 +11,7 @@ import { useProfile } from '../auth/useProfile'
 import { nowTimeIn, todayIn } from '../today/dayRange'
 import MedCard from './MedCard'
 import MedForm from './MedForm'
-import { nextDoseText } from './summary'
+import { isStopped, nextDoseText } from './summary'
 
 export default function MedsList() {
   const profile = useProfile()
@@ -67,10 +67,23 @@ export default function MedsList() {
     closeForm()
   }
 
-  const sorted = useMemo(
-    () => [...meds].sort((a, b) => Number(a.paused) - Number(b.paused) || a.name.localeCompare(b.name)),
-    [meds],
-  )
+  const today = todayIn(tz)
+  const own = (m: Medication) => schedules.filter((s) => s.medication_id === m.id)
+  const inactive = (m: Medication) => m.paused || isStopped(own(m), today)
+  const sorted = [...meds].sort((a, b) => Number(inactive(a)) - Number(inactive(b)) || a.name.localeCompare(b.name))
+
+  // Shared by the card menu and the edit screen; each returns whether it ran.
+  const pause = (m: Medication) => run(() => setPaused(m.id, !m.paused), 'Could not update medication')
+  const stop = async (m: Medication) => {
+    if (!window.confirm(`Stop ${m.name}? No doses after today. Its history is kept.`)) return false
+    await run(() => stopMed(m, own(m), today), 'Could not stop medication')
+    return true
+  }
+  const remove = async (m: Medication) => {
+    if (!window.confirm(`Delete ${m.name}? This also removes its schedule and dose history.`)) return false
+    await run(() => deleteMed(m.id), 'Could not delete medication')
+    return true
+  }
 
   if (!loaded)
     return (
@@ -95,9 +108,16 @@ export default function MedsList() {
           schedules={med ? schedules.filter((s) => s.medication_id === med.id) : undefined}
           meds={meds}
           remoteSuggestions={profile?.suggestions_enabled ?? true}
-          today={todayIn(tz)}
+          today={today}
           onSave={save}
           onCancel={closeForm}
+          manage={
+            med && {
+              onPause: () => void pause(med).then(closeForm),
+              onStop: () => void stop(med).then((ran) => ran && closeForm()),
+              onDelete: () => void remove(med).then((ran) => ran && closeForm()),
+            }
+          }
         />
       </main>
     )
@@ -115,15 +135,13 @@ export default function MedsList() {
           <MedCard
             key={m.id}
             med={m}
-            schedules={schedules.filter((s) => s.medication_id === m.id)}
+            schedules={own(m)}
+            stopped={isStopped(own(m), today)}
             onEdit={() => navigate(`/meds/${m.id}/edit`)}
             onHistory={() => navigate(`/history/${m.id}`)}
-            onDelete={() => {
-              if (window.confirm(`Delete ${m.name}? This also removes its schedule and dose history.`)) {
-                void run(() => deleteMed(m.id), 'Could not delete medication')
-              }
-            }}
-            onPause={(p) => void run(() => setPaused(m.id, p), 'Could not update medication')}
+            onDelete={() => void remove(m)}
+            onStop={() => void stop(m)}
+            onPause={() => void pause(m)}
             onLogDose={() => void run(() => logPrnDose(m.id), 'Could not log dose')}
             onRefill={(qty) => void run(() => addStock(m.id, qty), 'Could not update stock')}
           />

@@ -2,6 +2,21 @@ import { Link } from 'react-router-dom'
 import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
 import { timeLabel } from './dayRange'
 
+const medLabel = (med: Medication | undefined) =>
+  med ? `${med.name}${med.strength ? ` ${med.strength}` : ''}` : 'Unknown medication'
+
+/** A dose on a day not generated yet: shown so the day isn't empty, nothing to mark. */
+export function UpcomingRow({ med }: { med: Medication }) {
+  return (
+    <li className="dose-row is-done">
+      <Link className="dose-name" to={`/history/${med.id}`}>
+        <strong>{medLabel(med)}</strong>
+        <span className="status status-pending">Upcoming</span>
+      </Link>
+    </li>
+  )
+}
+
 export default function DoseRow({
   dose,
   med,
@@ -13,7 +28,7 @@ export default function DoseRow({
   tz: string
   onSet: (status: DoseStatus) => void
 }) {
-  const label = med ? `${med.name}${med.strength ? ` ${med.strength}` : ''}` : 'Unknown medication'
+  const label = medLabel(med)
 
   // Done for the day: stays in place, dimmed. Undo puts a wrong tap back to due.
   if (dose.status === 'taken' || dose.status === 'skipped') {
