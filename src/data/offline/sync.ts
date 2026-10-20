@@ -14,14 +14,25 @@ let status: SyncStatus = { online: typeof navigator === 'undefined' || navigator
 const listeners = new Set<(s: SyncStatus) => void>()
 const results = new Map<string, { ok: true } | { ok: false; error: unknown }>()
 let running: Promise<void> | null = null
+let resetting = false
 
-async function getStore(): Promise<Store> {
+async function getStore(): Promise<{ userId: string; store: Store }> {
+  if (resetting) throw new Error('Signing out')
   const userId = await currentUserId()
   if (current?.userId !== userId) {
     if (current) void current.store.then((s) => s.close())
     current = { userId, store: openStore(userId) }
   }
-  return current.store
+  return { userId, store: await current.store }
+}
+
+/** True while `userId` is still the signed-in user (a run must never send one user's ops as another). */
+async function stillSignedIn(userId: string): Promise<boolean> {
+  try {
+    return (await currentUserId()) === userId
+  } catch {
+    return false
+  }
 }
 
 export function classify(e: unknown): 'network' | 'auth' | 'permanent' {
@@ -36,7 +47,7 @@ export function classify(e: unknown): 'network' | 'auth' | 'permanent' {
 async function emit(patch: Partial<SyncStatus> = {}): Promise<void> {
   let items: OutboxItem[] = []
   try {
-    items = await (await getStore()).list()
+    items = await (await getStore()).store.list()
   } catch {
     // signed out: nothing queued
   }
@@ -74,13 +85,12 @@ async function send(op: Op): Promise<void> {
 }
 
 /** Replace the cache with the server's data after changes landed (server-side effects win). */
-async function refresh(store: Store): Promise<void> {
+async function refresh(store: Store, userId: string): Promise<void> {
   const cache = await store.readCache()
   const nowMs = Date.now()
   const earliest = cache.doses.reduce((min, d) => Math.min(min, Date.parse(d.scheduled_for)), nowMs - 86_400_000)
   const from = new Date(earliest).toISOString()
   const to = new Date(nowMs + 3 * 86_400_000).toISOString()
-  const userId = current?.userId ?? ''
   const [meds, schedules, profile, doses] = await Promise.all([
     supabase.from('medications').select('*').order('name'),
     supabase.from('schedules').select('*'),
@@ -99,8 +109,9 @@ async function refresh(store: Store): Promise<void> {
 
 async function run(): Promise<void> {
   let store: Store
+  let userId: string
   try {
-    store = await getStore()
+    ;({ store, userId } = await getStore())
   } catch {
     return // signed out: nothing to send
   }
@@ -109,6 +120,10 @@ async function run(): Promise<void> {
   let patch: Partial<SyncStatus> = { online: true, needsSignIn: false }
   for (const item of await store.list()) {
     if (item.state !== 'pending') continue
+    if (!(await stillSignedIn(userId))) {
+      await emit({ syncing: false })
+      return
+    }
     try {
       await send(item.op)
       await store.remove(item.seq)
@@ -129,9 +144,9 @@ async function run(): Promise<void> {
       sent = true
     }
   }
-  if (sent) {
+  if (sent && (await stillSignedIn(userId))) {
     try {
-      await refresh(store)
+      await refresh(store, userId)
     } catch (e) {
       if (classify(e) === 'network') patch = { online: false }
     }
@@ -157,7 +172,7 @@ export function flush(): Promise<void> {
  * afterwards (the server's data when it synced). Throws if the server rejected this op.
  */
 export async function submit<T>(op: Op, localResult: (c: Cache) => T): Promise<T> {
-  const store = await getStore()
+  const { store } = await getStore()
   await store.writeCache(applyLocal(await store.readCache(), op, Date.now()))
   await store.enqueue(op)
   await emit()
@@ -181,7 +196,7 @@ export async function readThrough<T>(
 ): Promise<T> {
   let store: Store
   try {
-    store = await getStore()
+    ;({ store } = await getStore())
   } catch {
     return fetch()
   }
@@ -205,7 +220,7 @@ export async function readThrough<T>(
 /** The cached data for the signed-in user, or null when signed out. */
 export async function snapshot(): Promise<Cache | null> {
   try {
-    return await (await getStore()).readCache()
+    return await (await getStore()).store.readCache()
   } catch {
     return null
   }
@@ -213,24 +228,34 @@ export async function snapshot(): Promise<Cache | null> {
 
 export async function pendingCount(): Promise<number> {
   try {
-    return (await (await getStore()).list()).filter((i) => i.state === 'pending').length
+    return (await (await getStore()).store.list()).filter((i) => i.state === 'pending').length
   } catch {
     return 0
   }
 }
 
 export async function dismissFailed(seq: number): Promise<void> {
-  await (await getStore()).remove(seq)
+  await (await getStore()).store.remove(seq)
   await emit()
 }
 
-/** Forget this user's cache and outbox (after sign-out was confirmed). */
+/** Forget the signed-in user's cache and outbox. Call while still signed in, after sign-out was confirmed. */
 export async function resetForSignOut(): Promise<void> {
-  if (!current) return
-  const { userId, store } = current
-  current = null
-  ;(await store).close()
-  await deleteStore(userId)
+  if (running) await running.catch(() => undefined)
+  let userId: string
+  try {
+    userId = current?.userId ?? (await currentUserId())
+  } catch {
+    return
+  }
+  resetting = true
+  try {
+    if (current) (await current.store).close()
+    current = null
+    await deleteStore(userId)
+  } finally {
+    resetting = false
+  }
   status = { ...status, pending: 0, failed: [], needsSignIn: false }
   for (const fn of listeners) fn(status)
 }

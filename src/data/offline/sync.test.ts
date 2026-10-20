@@ -189,6 +189,40 @@ describe('sync engine', () => {
     expect(await outbox()).toEqual([])
   })
 
+  it('a run stops sending when the signed-in user changes mid-flush', async () => {
+    rpc.mockImplementation(offline)
+    for (const n of [1, 2]) await sync.submit(addStock(n), stockOf)
+    rpc.mockReset()
+    rpc.mockImplementation(() => ((user.id = crypto.randomUUID()), ok(1)))
+    await sync.flush()
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(select).not.toHaveBeenCalled()
+  })
+
+  it('resetForSignOut waits for a running flush', async () => {
+    rpc.mockImplementation(offline)
+    await sync.submit(addStock(1), stockOf)
+    let release!: () => void
+    rpc.mockReset()
+    rpc.mockImplementation(() => new Promise((r) => (release = () => r({ data: 1, error: null }))))
+    const flushing = sync.flush()
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalled())
+    const reset = sync.resetForSignOut()
+    release()
+    await Promise.all([flushing, reset])
+    expect(await outbox()).toEqual([])
+  })
+
+  it('resetForSignOut works before anything opened the store', async () => {
+    const s = await store.openStore(user.id)
+    await s.enqueue(addStock(1))
+    s.close()
+    vi.resetModules()
+    const fresh = await import('./sync')
+    await fresh.resetForSignOut()
+    expect(await outbox()).toEqual([])
+  })
+
   it('deleteMed op goes through a table delete', async () => {
     del.mockImplementation(() => Promise.resolve({ error: null }))
     await sync.submit({ opId: 'x', at: new Date().toISOString(), kind: 'deleteMed', medId: 'm1' }, () => undefined)
