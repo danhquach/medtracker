@@ -4,6 +4,7 @@ import { BackIcon, CalendarIcon, HistoryIcon, PillIcon, SettingsIcon } from './c
 import { Loading } from './components/states'
 import SyncStatus from './components/SyncStatus'
 import { bootSession } from './data/boot'
+import EmailLinkNotice from './features/auth/EmailLinkNotice'
 import Welcome from './features/auth/Welcome'
 import { useSession } from './features/auth/useSession'
 import History from './features/history/History'
@@ -77,6 +78,7 @@ export default function App() {
     <>
       <AppHeader />
       <SyncStatus />
+      <EmailLinkNotice email={user.email} guest={!!user.is_anonymous} />
       {ready ? (
         <Routes>
           <Route path="/" element={<Navigate to="/today" replace />} />

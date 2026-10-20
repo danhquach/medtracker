@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { continueAsGuest } from './auth'
 import CredentialsForm from './CredentialsForm'
+import EmailLinkNotice from './EmailLinkNotice'
 
 export default function Welcome() {
   const [view, setView] = useState<'menu' | 'signup' | 'signin'>('menu')
@@ -18,6 +19,7 @@ export default function Welcome() {
   return (
     <main className="welcome">
       <h1>MedTracker</h1>
+      <EmailLinkNotice />
       <p className="muted">Keep track of your medications and never miss a dose.</p>
       <div className="stack">
         <button

@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sb = vi.hoisted(() => ({
   updateUser: vi.fn(),
+  signUp: vi.fn((_args: unknown) => Promise.resolve({ data: { session: null }, error: null })),
   signOut: vi.fn(),
   signIn: vi.fn(() => Promise.resolve({ error: null })),
   getSession: vi.fn(() => Promise.resolve({ data: { session: { user: { id: 'guest' } } } })),
 }))
 vi.mock('../../lib/supabase', () => ({
   sessionUser: () => sb.getSession().then((r) => r.data.session?.user ?? null),
-  supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
+  supabase: { auth: { updateUser: sb.updateUser, signUp: sb.signUp, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
 }))
 const offline = vi.hoisted(() => ({ reset: vi.fn((_id?: string) => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
 vi.mock('../../data/offline/sync', () => ({ resetForSignOut: offline.reset, flush: offline.flush, pendingCount: offline.pending }))
@@ -18,7 +19,7 @@ vi.mock('../../data/profile', () => ({ markPasswordSet: vi.fn() }))
 const push = vi.hoisted(() => ({ remove: vi.fn() }))
 vi.mock('../../push/subscribe', () => ({ removeThisDeviceSubscription: push.remove }))
 
-import { createProfile, isGuest, needsPasswordFinish, setPassword, signIn, signOut, unsyncedBeforeSignOut } from './auth'
+import { createProfile, isGuest, needsPasswordFinish, setPassword, signIn, signOut, signUp, unsyncedBeforeSignOut } from './auth'
 
 const user = (extra: Partial<User> = {}) =>
   ({ id: 'u1', is_anonymous: false, email_confirmed_at: '2026-10-19T00:00:00Z', ...extra }) as User
@@ -148,6 +149,15 @@ describe('createProfile', () => {
     sb.updateUser.mockResolvedValue({ error: null })
     expect(await createProfile('a@example.com', 'password123')).toBe('done')
     expect(sb.signOut).toHaveBeenCalledWith({ scope: 'others' })
+  })
+})
+
+describe('signUp', () => {
+  it('the confirmation link returns to Today under the deploy base', async () => {
+    vi.stubEnv('BASE_URL', '/medtracker/')
+    expect(await signUp('a@example.com', 'password123')).toBe(false)
+    expect(sb.signUp.mock.calls[0]?.[0]).toMatchObject({ options: { emailRedirectTo: `${location.origin}/medtracker/today` } })
+    vi.unstubAllEnvs()
   })
 })
 
