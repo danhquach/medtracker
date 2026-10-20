@@ -158,3 +158,64 @@ describe('value checks (MT-4)', () => {
     expect(new Date(row.updated_at).getFullYear()).toBeGreaterThan(2000)
   })
 })
+
+describe('save_med backfills earlier today (MT-39)', () => {
+  // A zone where it's mid-day, so "1 hour ago" and "in 1 hour" are both today.
+  const zone = ['UTC', 'Asia/Tokyo', 'America/Los_Angeles'].find((tz) => {
+    const h = Number(new Date().toLocaleString('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }))
+    return h >= 2 && h <= 21
+  })!
+  const hm = (msFromNow: number) =>
+    new Date(Date.now() + msFromNow).toLocaleTimeString('en-GB', { timeZone: zone, hour12: false, hour: '2-digit', minute: '2-digit' })
+  const at = (times: string[]) => ({ ...daily, times })
+  const doses = async (id: string) =>
+    (await admin().from('dose_events').select('*').eq('medication_id', id).order('scheduled_for')).data!
+  const todayDoses = async (id: string) => {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: zone })
+    return (await doses(id)).filter((r) => new Date(r.scheduled_for).toLocaleDateString('en-CA', { timeZone: zone }) === today)
+  }
+  const earlier = hm(-3600_000)
+  const later = hm(3600_000)
+
+  beforeAll(async () => {
+    expect((await a.client.from('profiles').update({ time_zone: zone }).eq('user_id', a.id)).error).toBeNull()
+  })
+
+  it('a new med gets its already-passed dose today, pending and with no reminder', async () => {
+    const { data: id, error } = await a.client.rpc('save_med', { p_med: med(), p_schedules: [at([earlier, later])] })
+    expect(error).toBeNull()
+    const rows = await todayDoses(id as string)
+    expect(rows).toHaveLength(2)
+    const [past, future] = rows
+    expect(new Date(past.scheduled_for) < new Date()).toBe(true)
+    expect(past.status).toBe('pending')
+    expect(past.notified_at).not.toBeNull()
+    expect(future.notified_at).toBeNull()
+  })
+
+  it('an edit that adds an earlier time backfills only that time', async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med(), p_schedules: [at([later])] })
+    expect(await todayDoses(id as string)).toHaveLength(1)
+    const { error } = await a.client.rpc('save_med', { p_med: med({ id }), p_schedules: [at([earlier, later])] })
+    expect(error).toBeNull()
+    expect(await todayDoses(id as string)).toHaveLength(2)
+  })
+
+  it('an edit that adds no time does not bring back a missing earlier dose', async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med(), p_schedules: [at([earlier])] })
+    // Same state as a med paused before its dose time and resumed after it.
+    await admin().from('dose_events').delete().eq('medication_id', id)
+    const { error } = await a.client.rpc('save_med', { p_med: med({ id, name: 'Renamed' }), p_schedules: [at([earlier])] })
+    expect(error).toBeNull()
+    expect(await todayDoses(id as string)).toHaveLength(0)
+  })
+
+  it("backfill_today_doses does nothing for another user's med", async () => {
+    const { data: id } = await a.client.rpc('save_med', { p_med: med(), p_schedules: [at([earlier])] })
+    await admin().from('dose_events').delete().eq('medication_id', id)
+    const r = await b.client.rpc('backfill_today_doses', { p_med: id })
+    expect(r.error).toBeNull()
+    expect(r.data).toBe(0)
+    expect(await doses(id as string)).toHaveLength(0)
+  })
+})
