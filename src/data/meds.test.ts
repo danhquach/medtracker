@@ -9,7 +9,7 @@ vi.mock('../lib/supabase', () => ({
     from: () => ({ update: (v: unknown) => ({ eq: () => (upd(v), Promise.resolve({ error: null })) }) }),
   },
 }))
-import { addStock, saveMed, setPaused } from './meds'
+import { addStock, saveMed, setPaused, stopMed } from './meds'
 
 const med = { name: 'A', strength: null, form: null, notes: null, units_per_dose: 1, stock: null, refill_threshold_days: 7, notify: true }
 beforeEach(() => {
@@ -28,6 +28,24 @@ describe('meds data', () => {
   it('saveMed throws rpc errors', async () => {
     rpc.mockResolvedValue({ data: null, error: new Error('nope') })
     await expect(saveMed(med, [])).rejects.toThrow('nope')
+  })
+  it('stopMed ends open recurring schedules today; keeps earlier ends, as-needed and stock', async () => {
+    const full = { ...med, id: 'm1', user_id: 'u1', stock: 5, paused: false, refill_alerted_at: null, created_at: '', updated_at: '' }
+    const base = { id: 's', user_id: 'u1', medication_id: 'm1', times: ['09:00:00'], weekdays: null, interval_days: null, start_date: null }
+    await stopMed(
+      full,
+      [
+        { ...base, kind: 'daily', end_date: null },
+        { ...base, kind: 'daily', end_date: '2026-12-01' },
+        { ...base, kind: 'daily', end_date: '2026-10-01' },
+        { ...base, kind: 'prn', times: [], end_date: null },
+      ],
+      '2026-10-19',
+    )
+    const [, args] = rpc.mock.calls[0]
+    expect(args.p_med).toEqual({ ...med, id: 'm1', stock: undefined })
+    expect('stock' in args.p_med).toBe(false)
+    expect(args.p_schedules.map((s: { end_date: string | null }) => s.end_date)).toEqual(['2026-10-19', '2026-10-19', '2026-10-01', null])
   })
   it('setPaused updates then regenerates the user doses', async () => {
     await setPaused('m1', true)

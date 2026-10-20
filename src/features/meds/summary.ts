@@ -1,4 +1,4 @@
-import type { MedForm, Schedule } from '../../lib/types'
+import type { MedForm, Medication, Schedule } from '../../lib/types'
 import { addDays, dayTitle } from '../today/dayRange'
 
 const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -15,7 +15,7 @@ type NextSchedule = Pick<Schedule, 'kind' | 'times' | 'weekdays' | 'interval_day
 const isoDow = (date: string) => ((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000)
 
-function fallsOn(s: NextSchedule, date: string): boolean {
+export function fallsOn(s: NextSchedule, date: string): boolean {
   if (s.start_date && date < s.start_date) return false
   if (s.end_date && date > s.end_date) return false
   switch (s.kind) {
@@ -50,7 +50,28 @@ export function nextDoseText(schedules: NextSchedule[], today: string, nowTime: 
   return null
 }
 
-function timeText(t: string): string {
+/**
+ * Doses a day beyond the generated window will have, from the schedules (the server only creates
+ * rows for today and tomorrow). Paused meds have none; ended schedules stop at their end date.
+ */
+export function upcomingDoses(meds: Medication[], schedules: Schedule[], date: string): { med: Medication; time: string }[] {
+  return meds
+    .filter((m) => !m.paused)
+    .flatMap((med) =>
+      schedules
+        .filter((s) => s.medication_id === med.id && fallsOn(s, date))
+        .flatMap((s) => s.times.map((t) => ({ med, time: t.slice(0, 5) }))),
+    )
+    .sort((a, b) => a.time.localeCompare(b.time) || a.med.name.localeCompare(b.med.name))
+}
+
+/** Every recurring schedule ends on or before `today`, i.e. the med was stopped. */
+export function isStopped(schedules: Schedule[], today: string): boolean {
+  const recurring = schedules.filter((s) => s.kind !== 'prn')
+  return recurring.length > 0 && recurring.every((s) => !!s.end_date && s.end_date <= today)
+}
+
+export function timeText(t: string): string {
   const [h, m] = t.split(':').map(Number)
   return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 }

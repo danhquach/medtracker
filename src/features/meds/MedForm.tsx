@@ -5,7 +5,7 @@ import type { Suggestion } from '../autocomplete/sources'
 import { FieldError } from './FieldError'
 import NameAutocomplete from './NameAutocomplete'
 import ScheduleEditor from './ScheduleEditor'
-import { stockUnit } from './summary'
+import { isStopped, stockUnit } from './summary'
 import { invalidProps, toMedInput, toScheduleInput, validateMed, type FieldErrors, type ScheduleDraft } from './validate'
 
 const FORMS: MedFormKind[] = ['tablet', 'capsule', 'liquid', 'other']
@@ -44,6 +44,7 @@ export default function MedForm({
   today,
   onSave,
   onCancel,
+  manage,
 }: {
   med?: Medication
   schedules?: Schedule[]
@@ -52,6 +53,8 @@ export default function MedForm({
   today: string
   onSave: (med: MedInput, schedules: ScheduleInput[]) => Promise<void>
   onCancel: () => void
+  /** Editing an existing med: pause, stop and delete it from here too. */
+  manage?: { onPause: () => void; onStop: () => void; onDelete: () => void }
 }) {
   const [name, setName] = useState(med?.name ?? '')
   const [strength, setStrength] = useState(med?.strength ?? '')
@@ -238,6 +241,22 @@ export default function MedForm({
           </button>
         </div>
       </div>
+
+      {med && manage && (
+        <div className="row" role="group" aria-label="Manage medication">
+          <button type="button" onClick={manage.onPause}>
+            {med.paused ? 'Resume' : 'Pause'}
+          </button>
+          {schedules?.some((s) => s.kind !== 'prn') && !isStopped(schedules, today) && (
+            <button type="button" onClick={manage.onStop}>
+              Stop…
+            </button>
+          )}
+          <button type="button" className="danger" onClick={manage.onDelete}>
+            Delete…
+          </button>
+        </div>
+      )}
     </form>
   )
 }
