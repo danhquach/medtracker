@@ -15,8 +15,14 @@ function offsetMs(utcMs: number, tz: string): number {
 }
 
 function localMidnightUtc(date: string, tz: string): number {
+  return localWallTimeUtc(date, '00:00', tz)
+}
+
+/** UTC ms of a local wall-clock time ('HH:MM[:SS]') on a local date in tz, like SQL `(date + time) at time zone tz`. */
+export function localWallTimeUtc(date: string, time: string, tz: string): number {
   const [y, m, d] = date.split('-').map(Number)
-  const guess = Date.UTC(y, m - 1, d)
+  const [h, mi, sec = 0] = time.split(':').map(Number)
+  const guess = Date.UTC(y, m - 1, d, h, mi, sec)
   const first = guess - offsetMs(guess, tz)
   return guess - offsetMs(first, tz)
 }

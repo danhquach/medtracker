@@ -2,7 +2,8 @@
 // Keeps all data in this browser's localStorage, so the UI can be exercised without touching
 // the hosted (production) project. Mirrors only the calls the app makes, and only roughly the
 // server rules in supabase/migrations.
-import { addDays, localDayRange, todayIn } from '../features/today/dayRange'
+import { generateLocalDoses } from '../data/offline/generate'
+import { todayIn } from '../features/today/dayRange'
 import type { DoseEvent, Medication, Profile, Schedule } from './types'
 
 type Row = Record<string, unknown>
@@ -64,45 +65,18 @@ function generateDoses(backfill?: { medId: string; skipTimes: string[] }) {
   if (!p) return
   const tz = p.time_zone
   const today = todayIn(tz)
-  const nowMs = Date.now()
   for (const d of mine('dose_events') as unknown as DoseEvent[]) {
     if (d.status === 'pending' && todayIn(tz, Date.parse(d.scheduled_for)) < today) d.status = 'missed'
   }
-  const meds = mine('medications') as unknown as Medication[]
-  const scheds = mine('schedules') as unknown as Schedule[]
-  for (const day of [today, addDays(today, 1)]) {
-    const midnight = Date.parse(localDayRange(day, tz).from)
-    const isoDow = ((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7) + 1
-    for (const s of scheds) {
-      const m = meds.find((x) => x.id === s.medication_id)
-      if (!m || m.paused || s.kind === 'prn') continue
-      const backfillToday = day === today && backfill?.medId === m.id
-      if ((s.start_date && day < s.start_date) || (s.end_date && day > s.end_date)) continue
-      if (s.kind === 'weekdays' && !s.weekdays?.includes(isoDow)) continue
-      if (s.kind === 'interval') {
-        if (!s.start_date || !s.interval_days) continue
-        const gap = (Date.parse(day) - Date.parse(s.start_date)) / 86_400_000
-        if (gap % s.interval_days !== 0) continue
-      }
-      for (const t of s.times) {
-        const [h, mi] = t.split(':').map(Number)
-        const at = midnight + h * 3_600_000 + mi * 60_000
-        const scheduled_for = new Date(at).toISOString()
-        if (at <= nowMs && !(backfillToday && !backfill.skipTimes.includes(hhmmss(t)))) continue
-        if (db.tables.dose_events.some((d) => d.medication_id === m.id && d.scheduled_for === scheduled_for)) continue
-        db.tables.dose_events.push({
-          id: crypto.randomUUID(),
-          user_id: m.user_id,
-          medication_id: m.id,
-          scheduled_for,
-          status: 'pending',
-          acted_at: null,
-          notified_at: at <= nowMs ? now() : null,
-          snoozed_until: null,
-        } satisfies DoseEvent)
-      }
-    }
-  }
+  const fresh = generateLocalDoses({
+    meds: mine('medications') as unknown as Medication[],
+    schedules: mine('schedules') as unknown as Schedule[],
+    existing: db.tables.dose_events as unknown as DoseEvent[],
+    timeZone: tz,
+    nowMs: Date.now(),
+    backfill,
+  })
+  for (const d of fresh) db.tables.dose_events.push({ ...d, id: crypto.randomUUID() })
 }
 
 function regenerate(medId?: string, backfill?: { medId: string; skipTimes: string[] }) {
