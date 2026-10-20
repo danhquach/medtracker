@@ -1,5 +1,10 @@
 # MedTracker
 
+[![CI](https://github.com/danhquach/medtracker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/danhquach/medtracker/actions/workflows/ci.yml)
+[![Live app](https://img.shields.io/badge/live-danhquach.github.io%2Fmedtracker-2ea44f)](https://danhquach.github.io/medtracker/)
+
+**Open the app:** https://danhquach.github.io/medtracker/ (no install needed; start as a guest or sign in. To get reminders, install it to your home screen, see [Installing the app](#installing-the-app)). The live app uses the production Supabase project.
+
 Medication reminder PWA. Vite + React + TypeScript; Supabase (Postgres + RLS, SQL functions, `pg_cron` + `pg_net`, Vault, Edge Functions `send-reminders` / `dose-action` / `delete-account`); Web Push (VAPID). Migrations `0001`-`0007` live in `supabase/migrations`.
 
 ## Local setup
