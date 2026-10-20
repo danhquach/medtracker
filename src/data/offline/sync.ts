@@ -98,7 +98,12 @@ async function refresh(store: Store): Promise<void> {
 }
 
 async function run(): Promise<void> {
-  const store = await getStore()
+  let store: Store
+  try {
+    store = await getStore()
+  } catch {
+    return // signed out: nothing to send
+  }
   await emit({ syncing: true })
   let sent = false
   let patch: Partial<SyncStatus> = { online: true, needsSignIn: false }
@@ -194,6 +199,15 @@ export async function readThrough<T>(
     if (classify(e) !== 'network' || cache.profile === null) throw e
     await emit({ online: false })
     return fromCache(cache)
+  }
+}
+
+/** The cached data for the signed-in user, or null when signed out. */
+export async function snapshot(): Promise<Cache | null> {
+  try {
+    return await (await getStore()).readCache()
+  } catch {
+    return null
   }
 }
 

@@ -15,7 +15,10 @@ export type Op = { opId: string; at: string } & (
   | { kind: 'updateProfile'; patch: ProfilePatch }
 )
 
-const sameTime = (a: string, b: string) => Date.parse(a) === Date.parse(b)
+/** Identity and time for a new op. */
+export const opMeta = (): { opId: string; at: string } => ({ opId: crypto.randomUUID(), at: new Date().toISOString() })
+
+export const sameTime = (a: string, b: string) => Date.parse(a) === Date.parse(b)
 
 function withStock(meds: Medication[], medId: string, delta: number): Medication[] {
   return meds.map((m) => (m.id === medId && m.stock !== null ? { ...m, stock: Math.max(m.stock + delta, 0) } : m))

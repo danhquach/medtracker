@@ -1,5 +1,7 @@
 import { currentUserId, supabase } from '../lib/supabase'
 import type { Profile } from '../lib/types'
+import { opMeta } from './offline/ops'
+import { readThrough, submit } from './offline/sync'
 
 export const DEFAULT_TIME_ZONE = 'America/Toronto'
 
@@ -8,23 +10,28 @@ async function selectProfile(id: string) {
 }
 
 export async function getProfile(): Promise<Profile> {
-  const { data, error } = await selectProfile(await currentUserId())
-  if (error) throw error
-  return data as Profile
+  return readThrough(
+    async () => {
+      const { data, error } = await selectProfile(await currentUserId())
+      if (error) throw error
+      return data as Profile
+    },
+    (c) => {
+      if (!c.profile) throw new Error('Could not load your profile')
+      return c.profile
+    },
+    (c, profile) => ({ ...c, profile }),
+  )
 }
 
 export type ProfilePatch = Partial<Pick<Profile, 'nickname' | 'time_zone' | 'snooze_minutes' | 'suggestions_enabled'>>
 
+/** One update_profile call; a time zone change also regenerates future doses (server-side). */
 export async function updateProfile(patch: ProfilePatch): Promise<Profile> {
-  const id = await currentUserId()
-  const before = patch.time_zone !== undefined ? await getProfile() : null
-  const { data, error } = await supabase.from('profiles').update(patch).eq('user_id', id).select().single()
-  if (error) throw error
-  if (before && patch.time_zone !== before.time_zone) {
-    const { error: rpcError } = await supabase.rpc('regenerate_user_doses')
-    if (rpcError) throw rpcError
-  }
-  return data as Profile
+  return submit({ ...opMeta(), kind: 'updateProfile', patch }, (c) => {
+    if (!c.profile) throw new Error('Could not load your profile')
+    return c.profile
+  })
 }
 
 export async function touchLastSeen(): Promise<void> {
