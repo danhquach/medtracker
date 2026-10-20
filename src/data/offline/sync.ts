@@ -1,0 +1,238 @@
+// Offline sync: every write is an op that is applied to the local cache at once, queued in the
+// outbox, and sent to Supabase in order when there is a connection. Reads fall back to the cache.
+import { currentUserId, supabase } from '../../lib/supabase'
+import { applyLocal, toRpc, type Op } from './ops'
+import { deleteStore, openStore, type Cache, type OutboxItem, type Store } from './store'
+
+export type SyncStatus = { online: boolean; syncing: boolean; pending: number; failed: OutboxItem[]; needsSignIn: boolean }
+
+export const STALE_DOSE_CODE = 'STALE_DOSE'
+type ErrorLike = { name?: string; message?: string; code?: string; status?: number }
+
+let current: { userId: string; store: Promise<Store> } | null = null
+let status: SyncStatus = { online: typeof navigator === 'undefined' || navigator.onLine, syncing: false, pending: 0, failed: [], needsSignIn: false }
+const listeners = new Set<(s: SyncStatus) => void>()
+const results = new Map<string, { ok: true } | { ok: false; error: unknown }>()
+let running: Promise<void> | null = null
+
+async function getStore(): Promise<Store> {
+  const userId = await currentUserId()
+  if (current?.userId !== userId) {
+    if (current) void current.store.then((s) => s.close())
+    current = { userId, store: openStore(userId) }
+  }
+  return current.store
+}
+
+export function classify(e: unknown): 'network' | 'auth' | 'permanent' {
+  const err = (e ?? {}) as ErrorLike
+  const msg = err.message ?? ''
+  if (err.status === 401 || err.code === 'PGRST301' || /jwt|refresh token/i.test(msg)) return 'auth'
+  if (err.name === 'TypeError' || e instanceof TypeError || /fetch|network/i.test(msg)) return 'network'
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'network'
+  return 'permanent'
+}
+
+async function emit(patch: Partial<SyncStatus> = {}): Promise<void> {
+  let items: OutboxItem[] = []
+  try {
+    items = await (await getStore()).list()
+  } catch {
+    // signed out: nothing queued
+  }
+  status = {
+    ...status,
+    ...patch,
+    pending: items.filter((i) => i.state === 'pending').length,
+    failed: items.filter((i) => i.state === 'failed'),
+  }
+  for (const fn of listeners) fn(status)
+}
+
+export function subscribe(fn: (s: SyncStatus) => void): () => void {
+  listeners.add(fn)
+  fn(status)
+  return () => listeners.delete(fn)
+}
+
+export function getStatus(): SyncStatus {
+  return status
+}
+
+async function send(op: Op): Promise<void> {
+  const call = toRpc(op)
+  if ('table' in call) {
+    const { error } = await supabase.from(call.table).delete().eq('id', call.deleteId)
+    if (error) throw error
+    return
+  }
+  const { data, error } = await supabase.rpc(call.name, call.args)
+  if (error) throw error
+  if (op.kind === 'doseStatus' && !(data as { id?: string } | null)?.id) {
+    throw Object.assign(new Error('That dose is no longer scheduled, so it was not saved.'), { code: STALE_DOSE_CODE })
+  }
+}
+
+/** Replace the cache with the server's data after changes landed (server-side effects win). */
+async function refresh(store: Store): Promise<void> {
+  const cache = await store.readCache()
+  const nowMs = Date.now()
+  const earliest = cache.doses.reduce((min, d) => Math.min(min, Date.parse(d.scheduled_for)), nowMs - 86_400_000)
+  const from = new Date(earliest).toISOString()
+  const to = new Date(nowMs + 3 * 86_400_000).toISOString()
+  const userId = current?.userId ?? ''
+  const [meds, schedules, profile, doses] = await Promise.all([
+    supabase.from('medications').select('*').order('name'),
+    supabase.from('schedules').select('*'),
+    supabase.from('profiles').select('*').eq('user_id', userId).single(),
+    supabase.from('dose_events').select('*').gte('scheduled_for', from).lt('scheduled_for', to).order('scheduled_for'),
+  ])
+  for (const r of [meds, schedules, profile, doses]) if (r.error) throw r.error
+  const outside = cache.doses.filter((d) => d.scheduled_for < from || d.scheduled_for >= to)
+  await store.writeCache({
+    meds: meds.data as Cache['meds'],
+    schedules: schedules.data as Cache['schedules'],
+    profile: profile.data as Cache['profile'],
+    doses: [...outside, ...(doses.data as Cache['doses'])].sort((a, b) => a.scheduled_for.localeCompare(b.scheduled_for)),
+  })
+}
+
+async function run(): Promise<void> {
+  const store = await getStore()
+  await emit({ syncing: true })
+  let sent = false
+  let patch: Partial<SyncStatus> = { online: true, needsSignIn: false }
+  for (const item of await store.list()) {
+    if (item.state !== 'pending') continue
+    try {
+      await send(item.op)
+      await store.remove(item.seq)
+      results.set(item.op.opId, { ok: true })
+      sent = true
+    } catch (e) {
+      const kind = classify(e)
+      if (kind === 'network') {
+        patch = { online: false }
+        break
+      }
+      if (kind === 'auth') {
+        patch = { needsSignIn: true }
+        break
+      }
+      await store.update({ ...item, state: 'failed', error: (e as ErrorLike).message ?? String(e), tries: item.tries + 1 })
+      results.set(item.op.opId, { ok: false, error: e })
+      sent = true
+    }
+  }
+  if (sent) {
+    try {
+      await refresh(store)
+    } catch (e) {
+      if (classify(e) === 'network') patch = { online: false }
+    }
+  }
+  await emit({ ...patch, syncing: false })
+}
+
+/** Sends pending ops in order. Concurrent calls share one run; other tabs wait on a lock. */
+export function flush(): Promise<void> {
+  running ??= (async () => {
+    try {
+      const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+      await (locks ? locks.request('medtracker-sync', run) : run())
+    } finally {
+      running = null
+    }
+  })()
+  return running
+}
+
+/**
+ * Applies `op` locally, queues it and tries to send it. Returns `localResult` of the cache
+ * afterwards (the server's data when it synced). Throws if the server rejected this op.
+ */
+export async function submit<T>(op: Op, localResult: (c: Cache) => T): Promise<T> {
+  const store = await getStore()
+  await store.writeCache(applyLocal(await store.readCache(), op, Date.now()))
+  await store.enqueue(op)
+  await emit()
+  await flush()
+  const r = results.get(op.opId)
+  results.delete(op.opId)
+  if (r && !r.ok) {
+    const failed = (await store.list()).find((i) => i.op.opId === op.opId)
+    if (failed) await store.remove(failed.seq) // the caller shows this error itself
+    await emit()
+    throw r.error
+  }
+  return localResult(await store.readCache())
+}
+
+/** Network-first read; the cache answers while changes are queued or the network is down. */
+export async function readThrough<T>(
+  fetch: () => Promise<T>,
+  fromCache: (c: Cache) => T,
+  intoCache: (c: Cache, v: T) => Cache,
+): Promise<T> {
+  let store: Store
+  try {
+    store = await getStore()
+  } catch {
+    return fetch()
+  }
+  if (status.pending > 0 || (await store.list()).some((i) => i.state === 'pending')) {
+    await flush()
+    if ((await store.list()).some((i) => i.state === 'pending')) return fromCache(await store.readCache())
+  }
+  try {
+    const v = await fetch()
+    await store.writeCache(intoCache(await store.readCache(), v))
+    if (!status.online) await emit({ online: true })
+    return v
+  } catch (e) {
+    const cache = await store.readCache()
+    if (classify(e) !== 'network' || cache.profile === null) throw e
+    await emit({ online: false })
+    return fromCache(cache)
+  }
+}
+
+export async function pendingCount(): Promise<number> {
+  try {
+    return (await (await getStore()).list()).filter((i) => i.state === 'pending').length
+  } catch {
+    return 0
+  }
+}
+
+export async function dismissFailed(seq: number): Promise<void> {
+  await (await getStore()).remove(seq)
+  await emit()
+}
+
+/** Forget this user's cache and outbox (after sign-out was confirmed). */
+export async function resetForSignOut(): Promise<void> {
+  if (!current) return
+  const { userId, store } = current
+  current = null
+  ;(await store).close()
+  await deleteStore(userId)
+  status = { ...status, pending: 0, failed: [], needsSignIn: false }
+  for (const fn of listeners) fn(status)
+}
+
+/** Flush now, when the connection returns, and when the app comes back to the foreground. */
+export function startSyncTriggers(): () => void {
+  const kick = () => void flush().catch((e: unknown) => console.error('sync failed', e))
+  const onVisible = () => document.visibilityState === 'visible' && kick()
+  const onOffline = () => void emit({ online: false })
+  window.addEventListener('online', kick)
+  window.addEventListener('offline', onOffline)
+  document.addEventListener('visibilitychange', onVisible)
+  kick()
+  return () => {
+    window.removeEventListener('online', kick)
+    window.removeEventListener('offline', onOffline)
+    document.removeEventListener('visibilitychange', onVisible)
+  }
+}
