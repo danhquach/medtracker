@@ -4,14 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const sb = vi.hoisted(() => ({
   updateUser: vi.fn(),
   signOut: vi.fn(),
+  signIn: vi.fn(() => Promise.resolve({ error: null })),
+  getSession: vi.fn(() => Promise.resolve({ data: { session: { user: { id: 'guest' } } } })),
 }))
-vi.mock('../../lib/supabase', () => ({ supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut } } }))
+vi.mock('../../lib/supabase', () => ({
+  supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
+}))
+const offline = vi.hoisted(() => ({ reset: vi.fn(() => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
+vi.mock('../../data/offline/sync', () => ({ resetForSignOut: offline.reset, flush: offline.flush, pendingCount: offline.pending }))
 vi.mock('../../data/profile', () => ({ markPasswordSet: vi.fn() }))
 
 const push = vi.hoisted(() => ({ remove: vi.fn() }))
 vi.mock('../../push/subscribe', () => ({ removeThisDeviceSubscription: push.remove }))
 
-import { createProfile, isGuest, needsPasswordFinish, setPassword, signOut } from './auth'
+import { createProfile, isGuest, needsPasswordFinish, setPassword, signIn, signOut, unsyncedBeforeSignOut } from './auth'
 
 const user = (extra: Partial<User> = {}) =>
   ({ id: 'u1', is_anonymous: false, email_confirmed_at: '2026-10-19T00:00:00Z', ...extra }) as User
@@ -58,8 +64,16 @@ describe('signOut', () => {
     const order: string[] = []
     push.remove.mockImplementation(async () => void order.push('remove'))
     sb.signOut.mockImplementation(async () => (order.push('signOut'), { error: null }))
+    offline.reset.mockImplementation(async () => void order.push('reset'))
     await signOut()
-    expect(order).toEqual(['remove', 'signOut'])
+    expect(order).toEqual(['remove', 'reset', 'signOut'])
+  })
+  it('still signs out when the offline reset fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    offline.reset.mockRejectedValueOnce(new Error('idb'))
+    sb.signOut.mockResolvedValue({ error: null })
+    await signOut()
+    expect(sb.signOut).toHaveBeenCalled()
   })
   it('still signs out when removal rejects', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -78,6 +92,21 @@ describe('signOut', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('offline data on account changes', () => {
+  it('unsyncedBeforeSignOut tries to sync, then counts what is left', async () => {
+    offline.pending.mockResolvedValueOnce(2)
+    expect(await unsyncedBeforeSignOut()).toBe(2)
+    expect(offline.flush).toHaveBeenCalled()
+  })
+  it('signIn over an existing session wipes that session’s offline data first', async () => {
+    const order: string[] = []
+    offline.reset.mockImplementation(async () => void order.push('reset'))
+    sb.signIn.mockImplementation(async () => (order.push('signIn'), { error: null }))
+    await signIn('a@example.com', 'pw')
+    expect(order).toEqual(['reset', 'signIn'])
   })
 })
 

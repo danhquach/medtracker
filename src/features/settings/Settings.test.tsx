@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   updateProfile: vi.fn(),
   markTimeZoneChosen: vi.fn(),
   signOut: vi.fn(() => Promise.resolve()),
+  unsynced: vi.fn(() => Promise.resolve(0)),
   invoke: vi.fn(),
   localSignOut: vi.fn(() => Promise.resolve({ error: null })),
   deviceState: { state: 'off' as string | null },
@@ -36,6 +37,7 @@ vi.mock('../../data/meds', () => ({ listMeds: () => Promise.resolve([]), listSch
 vi.mock('../auth/auth', async (orig) => ({
   ...(await orig<typeof import('../auth/auth')>()),
   signOut: m.signOut,
+  unsyncedBeforeSignOut: m.unsynced,
 }))
 vi.mock('../../lib/supabase', () => ({
   supabase: { functions: { invoke: m.invoke }, auth: { signOut: m.localSignOut } },
@@ -253,6 +255,25 @@ describe('Settings', () => {
   })
 
   it('signed-in user can sign out', async () => {
+    await loaded()
+    const confirm = vi.spyOn(window, 'confirm')
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => expect(m.signOut).toHaveBeenCalled())
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('sign-out with pending changes asks before clearing', async () => {
+    m.unsynced.mockResolvedValueOnce(2)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("2 changes haven't synced and will be lost. Sign out anyway?"))
+    expect(m.signOut).not.toHaveBeenCalled()
+  })
+
+  it('sign-out with pending changes proceeds when confirmed', async () => {
+    m.unsynced.mockResolvedValueOnce(1)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(m.signOut).toHaveBeenCalled())

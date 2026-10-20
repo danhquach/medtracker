@@ -812,3 +812,40 @@ details.more > summary {
   color: inherit;
   text-underline-offset: 3px;
 }
+
+/* Offline / sync line under the header (SyncStatus). Hidden when everything is synced. */
+.sync-status {
+  padding: 6px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+  font-size: 0.9rem;
+}
+
+.sync-status p {
+  margin: 0;
+  color: var(--warning);
+}
+
+.sync-status .sync-failed {
+  min-height: 44px;
+  padding: 0;
+  color: var(--danger);
+  background: none;
+  border: none;
+  text-decoration: underline;
+}
+
+.sync-failed-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.sync-failed-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--text);
+}

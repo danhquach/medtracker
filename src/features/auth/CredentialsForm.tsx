@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { changes } from '../../components/SyncStatus'
+import { pendingCount } from '../../data/offline/sync'
 import { createProfile, GUEST_LEFT_BEHIND, signIn, signUp } from './auth'
 
 export type CredentialsMode = 'signup' | 'signin' | 'upgrade'
@@ -20,6 +22,7 @@ export default function CredentialsForm({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmed, setConfirmed] = useState(false)
+  const [unsynced, setUnsynced] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -30,6 +33,7 @@ export default function CredentialsForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (needsGuestConfirm) {
+      setUnsynced(await pendingCount())
       setConfirmed(true)
       return
     }
@@ -85,7 +89,12 @@ export default function CredentialsForm({
           At least 8 characters.
         </p>
       )}
-      {confirmed && <p role="alert">{GUEST_LEFT_BEHIND}</p>}
+      {confirmed && (
+        <p role="alert">
+          {GUEST_LEFT_BEHIND}
+          {unsynced > 0 && ` ${changes(unsynced)} made offline ${unsynced === 1 ? "hasn't" : "haven't"} synced and will be lost.`}
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>
