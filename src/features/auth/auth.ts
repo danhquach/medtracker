@@ -1,8 +1,9 @@
 import type { User } from '@supabase/supabase-js'
+import { flush, pendingCount, resetForSignOut } from '../../data/offline/sync'
 import { markPasswordSet } from '../../data/profile'
 import { removeThisDeviceSubscription } from '../../push/subscribe'
 import { appUrl } from '../../lib/basePath'
-import { supabase } from '../../lib/supabase'
+import { sessionUser, supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 
 export const GUEST_LEFT_BEHIND = 'Your guest data on this device will be left behind.'
@@ -59,9 +60,35 @@ export async function signUp(email: string, password: string): Promise<boolean> 
   return true
 }
 
+/** Changes made offline that still aren't on the server after one last try (time-boxed 5 s). */
+export async function unsyncedBeforeSignOut(): Promise<number> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([flush(), new Promise<void>((r) => (timer = setTimeout(r, 5000)))])
+  } catch (e) {
+    console.error('sync before sign-out failed', e)
+  } finally {
+    clearTimeout(timer)
+  }
+  return pendingCount()
+}
+
+/** Wipes this device's offline copy of a user's data (default: the signed-in user). Best-effort. */
+async function forgetOfflineData(userId?: string): Promise<void> {
+  try {
+    await resetForSignOut(userId)
+  } catch (e) {
+    console.error('could not clear offline data', e)
+  }
+}
+
 export async function signIn(email: string, password: string): Promise<void> {
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const before = (await supabase.auth.getSession()).data.session?.user.id
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
+  // A guest signing in to another account leaves the guest behind (GUEST_LEFT_BEHIND): drop its
+  // local copy, but only once the sign-in worked, so a mistyped password loses nothing.
+  if (before && before !== data.user?.id) await forgetOfflineData(before)
 }
 
 export async function signOut(): Promise<void> {
@@ -74,8 +101,15 @@ export async function signOut(): Promise<void> {
   } finally {
     clearTimeout(timer)
   }
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  // End the session first, then wipe this user's offline copy: another tab can't reopen it once
+  // the session is gone. The wipe runs even if sign-out fails (e.g. account already deleted).
+  const userId = (await sessionUser())?.id // also right offline with an expired token
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  } finally {
+    await forgetOfflineData(userId) // unresolved id: falls back to the store that is open
+  }
 }
 
 export async function setPassword(password: string): Promise<void> {

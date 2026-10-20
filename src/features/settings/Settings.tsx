@@ -6,7 +6,8 @@ import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 import { useGoBack } from '../../lib/useGoBack'
 import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled, type DeviceState } from '../../push/subscribe'
-import { isGuest, needsPasswordFinish, signOut } from '../auth/auth'
+import { unsyncedWarning } from '../../components/syncCopy'
+import { isGuest, needsPasswordFinish, signOut, unsyncedBeforeSignOut } from '../auth/auth'
 import CredentialsForm from '../auth/CredentialsForm'
 import LoadError from '../auth/LoadError'
 import SetPasswordForm from '../auth/SetPasswordForm'
@@ -155,6 +156,8 @@ export default function Settings() {
   async function doSignOut() {
     setError(null)
     try {
+      const unsynced = await unsyncedBeforeSignOut()
+      if (unsynced > 0 && !window.confirm(unsyncedWarning(unsynced))) return
       await signOut()
     } catch (e) {
       setError(msg(e, 'Could not sign out'))

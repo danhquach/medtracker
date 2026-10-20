@@ -12,11 +12,15 @@ vi.mock('../lib/supabase', () => ({
     rpc: db.rpc,
     from: () => ({
       select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: db.profile, error: null }) }) }),
-      update: (patch: object) => {
-        db.update(patch)
-        return { eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { ...db.profile, ...patch }, error: null }) }) }) }
-      },
     }),
+  },
+}))
+// updateProfile is an offline op; the time zone regeneration happens server-side in update_profile.
+vi.mock('./offline/sync', () => ({
+  readThrough: (f: () => unknown) => f(),
+  submit: (op: { patch: object }, local: (c: object) => unknown) => {
+    db.update(op.patch)
+    return Promise.resolve(local({ profile: { ...db.profile, ...op.patch } }))
   },
 }))
 
@@ -46,7 +50,6 @@ describe('detectTimeZone', () => {
   it('marker absent + default zone → updates, regenerates, sets marker', async () => {
     await detectTimeZone()
     expect(db.update).toHaveBeenCalledWith({ time_zone: 'Asia/Tokyo' })
-    expect(db.rpc).toHaveBeenCalledWith('regenerate_user_doses')
     expect(store.get('tzDetected:u1')).toBe('1')
   })
   it('does not run again after the marker is set', async () => {

@@ -1,15 +1,17 @@
 import type { User } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { sessionUser, supabase } from '../../lib/supabase'
 
 export function useSession(): { loading: boolean; user: User | null } {
   const [state, setState] = useState<{ loading: boolean; user: User | null }>({ loading: true, user: null })
   useEffect(() => {
     let alive = true
-    void supabase.auth.getSession().then(({ data }) => {
-      if (alive) setState({ loading: false, user: data.session?.user ?? null })
+    void sessionUser().then((user) => {
+      if (alive) setState({ loading: false, user })
     })
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      // The initial state comes from sessionUser(), which also covers an expired session offline.
+      if (event === 'INITIAL_SESSION') return
       setState({ loading: false, user: session?.user ?? null })
     })
     return () => {

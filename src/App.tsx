@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { BackIcon, CalendarIcon, HistoryIcon, PillIcon, SettingsIcon } from './components/icons'
 import { Loading } from './components/states'
+import SyncStatus from './components/SyncStatus'
 import { bootSession } from './data/boot'
 import Welcome from './features/auth/Welcome'
 import { useSession } from './features/auth/useSession'
@@ -75,6 +76,7 @@ export default function App() {
   return (
     <>
       <AppHeader />
+      <SyncStatus />
       {ready ? (
         <Routes>
           <Route path="/" element={<Navigate to="/today" replace />} />

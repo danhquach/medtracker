@@ -4,14 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const sb = vi.hoisted(() => ({
   updateUser: vi.fn(),
   signOut: vi.fn(),
+  signIn: vi.fn(() => Promise.resolve({ error: null })),
+  getSession: vi.fn(() => Promise.resolve({ data: { session: { user: { id: 'guest' } } } })),
 }))
-vi.mock('../../lib/supabase', () => ({ supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut } } }))
+vi.mock('../../lib/supabase', () => ({
+  sessionUser: () => sb.getSession().then((r) => r.data.session?.user ?? null),
+  supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
+}))
+const offline = vi.hoisted(() => ({ reset: vi.fn((_id?: string) => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
+vi.mock('../../data/offline/sync', () => ({ resetForSignOut: offline.reset, flush: offline.flush, pendingCount: offline.pending }))
 vi.mock('../../data/profile', () => ({ markPasswordSet: vi.fn() }))
 
 const push = vi.hoisted(() => ({ remove: vi.fn() }))
 vi.mock('../../push/subscribe', () => ({ removeThisDeviceSubscription: push.remove }))
 
-import { createProfile, isGuest, needsPasswordFinish, setPassword, signOut } from './auth'
+import { createProfile, isGuest, needsPasswordFinish, setPassword, signIn, signOut, unsyncedBeforeSignOut } from './auth'
 
 const user = (extra: Partial<User> = {}) =>
   ({ id: 'u1', is_anonymous: false, email_confirmed_at: '2026-10-19T00:00:00Z', ...extra }) as User
@@ -58,8 +65,24 @@ describe('signOut', () => {
     const order: string[] = []
     push.remove.mockImplementation(async () => void order.push('remove'))
     sb.signOut.mockImplementation(async () => (order.push('signOut'), { error: null }))
+    offline.reset.mockImplementation(async (id?: string) => void order.push(`reset:${id}`))
     await signOut()
-    expect(order).toEqual(['remove', 'signOut'])
+    // Session cleared first, so other tabs can't reopen the store between the wipe and sign-out.
+    expect(order).toEqual(['remove', 'signOut', 'reset:guest'])
+  })
+  it('wipes offline data even when the user id cannot be resolved', async () => {
+    sb.getSession.mockResolvedValueOnce({ data: { session: null } } as never)
+    sb.signOut.mockResolvedValue({ error: null })
+    offline.reset.mockClear()
+    await signOut()
+    expect(offline.reset).toHaveBeenCalledWith(undefined)
+  })
+  it('still signs out when the offline reset fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    offline.reset.mockRejectedValueOnce(new Error('idb'))
+    sb.signOut.mockResolvedValue({ error: null })
+    await signOut()
+    expect(sb.signOut).toHaveBeenCalled()
   })
   it('still signs out when removal rejects', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -78,6 +101,26 @@ describe('signOut', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('offline data on account changes', () => {
+  it('unsyncedBeforeSignOut tries to sync, then counts what is left', async () => {
+    offline.pending.mockResolvedValueOnce(2)
+    expect(await unsyncedBeforeSignOut()).toBe(2)
+    expect(offline.flush).toHaveBeenCalled()
+  })
+  it('signIn over a guest session wipes the guest’s offline data after signing in', async () => {
+    const order: string[] = []
+    offline.reset.mockImplementation(async (id?: string) => void order.push(`reset:${id}`))
+    sb.signIn.mockImplementation(async () => (order.push('signIn'), { data: { user: { id: 'other' } }, error: null }))
+    await signIn('a@example.com', 'pw')
+    expect(order).toEqual(['signIn', 'reset:guest'])
+  })
+  it('a failed signIn leaves the guest’s offline data alone', async () => {
+    sb.signIn.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Invalid login credentials' } } as never)
+    await expect(signIn('a@example.com', 'bad')).rejects.toMatchObject({ message: 'Invalid login credentials' })
+    expect(offline.reset).not.toHaveBeenCalled()
   })
 })
 

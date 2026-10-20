@@ -10,6 +10,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }))
 
+vi.mock('./offline/sync', () => ({ readThrough: (f: () => unknown) => f() }))
 import { getProfile, markPasswordSet, touchLastSeen } from './profile'
 
 beforeEach(() => {
