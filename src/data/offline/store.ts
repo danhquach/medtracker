@@ -18,7 +18,8 @@ export interface Store {
 
 export const emptyCache = (): Cache => ({ meds: [], schedules: [], doses: [], profile: null })
 
-const dbName = (userId: string) => `medtracker-offline-${userId}`
+const PREFIX = 'medtracker-offline-'
+const dbName = (userId: string) => `${PREFIX}${userId}`
 
 function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -62,4 +63,13 @@ export async function openStore(userId: string, onClosed?: () => void): Promise<
 
 export async function deleteStore(userId: string): Promise<void> {
   await req(indexedDB.deleteDatabase(dbName(userId)))
+}
+
+/** Deletes every user's offline store except `keepUserId`'s (left behind by an expired or abandoned session). */
+export async function deleteOtherStores(keepUserId: string): Promise<void> {
+  if (typeof indexedDB.databases !== 'function') return
+  const keep = dbName(keepUserId)
+  for (const { name } of await indexedDB.databases()) {
+    if (name?.startsWith(PREFIX) && name !== keep) await req(indexedDB.deleteDatabase(name))
+  }
 }
