@@ -113,6 +113,26 @@ describe('sync engine', () => {
     expect(sync.getStatus().online).toBe(true)
   })
 
+  it('submit answers from the queue when the server is slow', async () => {
+    rpc.mockImplementation(() => new Promise(() => {}))
+    expect(await sync.submit(addStock(1, 5), stockOf, 50)).toBe(15)
+    expect((await outbox()).map((i) => i.state)).toEqual(['pending'])
+  })
+
+  it('offline (navigator.onLine false) writes and reads skip the network', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+    try {
+      expect(await sync.submit(addStock(1, 5), stockOf)).toBe(15)
+      expect(rpc).not.toHaveBeenCalled()
+      const fetch = vi.fn(() => Promise.resolve([med(99)]))
+      expect(stockOf({ meds: await sync.readThrough(fetch, (c) => c.meds, (c, v) => ({ ...c, meds: v })) })).toBe(15)
+      expect(fetch).not.toHaveBeenCalled()
+      expect(sync.getStatus().online).toBe(false)
+    } finally {
+      delete (navigator as unknown as { onLine?: boolean }).onLine
+    }
+  })
+
   it('null result is a permanent failure', async () => {
     rpc.mockImplementation(() => ok(null))
     const op: Op = { opId: 'd', at: new Date().toISOString(), kind: 'doseStatus', medId: 'm1', scheduledFor: '2026-10-20T12:00:00.000Z', status: 'taken' }

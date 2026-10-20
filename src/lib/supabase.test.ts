@@ -41,6 +41,19 @@ describe('sessionUser', () => {
     expect(await sessionUser()).toBeNull()
   })
 
+  it('a refresh stuck retrying offline does not block: the stored user answers', async () => {
+    vi.useFakeTimers()
+    try {
+      mem.set('sb-test-auth-token', JSON.stringify(stored))
+      getSession.mockReturnValue(new Promise(() => {})) // supabase-js backs off for ~25 s offline
+      const user = sessionUser()
+      await vi.advanceTimersByTimeAsync(1500)
+      expect((await user)?.id).toBe('u1')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('signed out (nothing stored) stays signed out', async () => {
     getSession.mockResolvedValue({ data: { session: null }, error: new AuthRetryableFetchError('Failed to fetch', 0) })
     expect(await sessionUser()).toBeNull()

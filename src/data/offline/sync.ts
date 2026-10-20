@@ -40,6 +40,9 @@ async function stillSignedIn(userId: string): Promise<boolean> {
   }
 }
 
+/** The browser knows it has no connection (airplane mode, no network): don't even try. */
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
+
 export function classify(e: unknown): 'network' | 'retry' | 'auth' | 'permanent' {
   const err = (e ?? {}) as ErrorLike
   const msg = err.message ?? ''
@@ -125,6 +128,10 @@ async function run(): Promise<void> {
   } catch {
     return // signed out: nothing to send
   }
+  if (isOffline()) {
+    await emit({ online: false })
+    return
+  }
   await emit({ syncing: true })
   let sent = false
   let patch: Partial<SyncStatus> = { online: true, needsSignIn: false }
@@ -188,14 +195,18 @@ export function flush(): Promise<void> {
 
 /**
  * Applies `op` locally, queues it and tries to send it. Returns `localResult` of the cache
- * afterwards (the server's data when it synced). Throws if the server rejected this op.
+ * afterwards (the server's data when it synced). Throws if the server rejected this op within
+ * waitMs; a later rejection shows up in the failed list instead.
  */
-export async function submit<T>(op: Op, localResult: (c: Cache) => T): Promise<T> {
+export async function submit<T>(op: Op, localResult: (c: Cache) => T, waitMs = 3000): Promise<T> {
   const { store } = await getStore()
   await store.writeCache(applyLocal(await store.readCache(), op, Date.now()))
   await store.enqueue(op)
   await emit()
-  await flush()
+  // A slow server doesn't hold up the screen: past waitMs the change stays queued and keeps syncing.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([flush(), new Promise<void>((r) => (timer = setTimeout(r, waitMs)))])
+  clearTimeout(timer)
   const r = results.get(op.opId)
   results.delete(op.opId)
   if (r && !r.ok) {
@@ -219,6 +230,13 @@ export async function readThrough<T>(
     ;({ store, userId } = await getStore())
   } catch {
     return fetch()
+  }
+  if (isOffline()) {
+    const cache = await store.readCache()
+    if (cache.profile !== null) {
+      if (status.online) await emit({ online: false })
+      return fromCache(cache)
+    }
   }
   if (status.pending > 0 || (await store.list()).some((i) => i.state === 'pending')) {
     await flush()
