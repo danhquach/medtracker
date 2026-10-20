@@ -73,20 +73,22 @@ export async function unsyncedBeforeSignOut(): Promise<number> {
   return pendingCount()
 }
 
-/** Wipes this device's offline copy of the signed-in user's data. Best-effort: never blocks sign-out. */
-async function forgetOfflineData(): Promise<void> {
+/** Wipes this device's offline copy of a user's data (default: the signed-in user). Best-effort. */
+async function forgetOfflineData(userId?: string): Promise<void> {
   try {
-    await resetForSignOut()
+    await resetForSignOut(userId)
   } catch (e) {
     console.error('could not clear offline data', e)
   }
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
-  // A guest signing in to another account leaves the guest behind (GUEST_LEFT_BEHIND): drop its local copy.
-  if ((await supabase.auth.getSession()).data.session) await forgetOfflineData()
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const before = (await supabase.auth.getSession()).data.session?.user.id
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
+  // A guest signing in to another account leaves the guest behind (GUEST_LEFT_BEHIND): drop its
+  // local copy, but only once the sign-in worked, so a mistyped password loses nothing.
+  if (before && before !== data.user?.id) await forgetOfflineData(before)
 }
 
 export async function signOut(): Promise<void> {

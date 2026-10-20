@@ -27,14 +27,18 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
   })
 }
 
-export async function openStore(userId: string): Promise<Store> {
+/** `onClosed` runs when another tab deletes this database and the connection is closed for it. */
+export async function openStore(userId: string, onClosed?: () => void): Promise<Store> {
   const open = indexedDB.open(dbName(userId), 1)
   open.onupgradeneeded = () => {
     open.result.createObjectStore('cache')
     open.result.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true })
   }
   const db = await req(open)
-  db.onversionchange = () => db.close() // a sign-out deleting this database must never be blocked
+  db.onversionchange = () => {
+    db.close() // a sign-out deleting this database must never be blocked
+    onClosed?.()
+  }
   const tx = (name: 'cache' | 'outbox', mode: IDBTransactionMode = 'readonly') => db.transaction(name, mode).objectStore(name)
   return {
     readCache: async () => ((await req(tx('cache').get('snapshot'))) as Cache | undefined) ?? emptyCache(),

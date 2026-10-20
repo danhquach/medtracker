@@ -333,6 +333,10 @@ export const supabase = {
   },
 }
 
+export async function sessionUser(): Promise<MockUser | null> {
+  return db.session?.user ?? null
+}
+
 export async function currentUserId(): Promise<string> {
   const id = uid()
   if (!id) throw new Error('Not signed in')

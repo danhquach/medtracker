@@ -5,6 +5,7 @@ import type { Op } from './ops'
 const rpc = vi.hoisted(() => vi.fn())
 const del = vi.hoisted(() => vi.fn())
 const select = vi.hoisted(() => vi.fn())
+const gte = vi.hoisted(() => vi.fn())
 const user = vi.hoisted(() => ({ id: '' }))
 vi.mock('../../lib/supabase', () => ({
   currentUserId: () => Promise.resolve(user.id),
@@ -13,7 +14,7 @@ vi.mock('../../lib/supabase', () => ({
     from: (table: string) => ({
       delete: () => ({ eq: (_c: string, id: string) => del(id) }),
       select: () => {
-        const q = { eq: () => q, gte: () => q, lt: () => q, order: () => q, single: () => q, then: (ok: (v: unknown) => unknown, err: (e: unknown) => unknown) => select(table).then(ok, err) }
+        const q = { eq: () => q, gte: (c: string, v: string) => (gte(c, v), q), lt: () => q, order: () => q, single: () => q, then: (ok: (v: unknown) => unknown, err: (e: unknown) => unknown) => select(table).then(ok, err) }
         return q
       },
     }),
@@ -234,6 +235,25 @@ describe('sync engine', () => {
     const fresh = await import('./sync')
     await fresh.resetForSignOut()
     expect(await outbox()).toEqual([])
+  })
+
+  it('reopens the store after another tab deleted it', async () => {
+    rpc.mockImplementation(offline)
+    await sync.submit(addStock(1), stockOf) // opens this tab's connection
+    await store.deleteStore(user.id) // e.g. sign-out in another tab closes it
+    const meds = await sync.readThrough(() => Promise.resolve([med(7)]), (c) => c.meds, (c, v) => ({ ...c, meds: v }))
+    expect(stockOf({ meds })).toBe(7)
+    expect(await sync.pendingCount()).toBe(0)
+  })
+
+  it('refresh after a write reads a fixed recent dose window', async () => {
+    const s = await store.openStore(user.id)
+    await s.writeCache({ ...(await s.readCache()), doses: [{ id: 'old', medication_id: 'm1', scheduled_for: '2020-01-01T00:00:00.000Z', status: 'taken' } as never] })
+    s.close()
+    rpc.mockImplementation(() => ok(11))
+    await sync.submit(addStock(1), stockOf)
+    const from = Date.parse(gte.mock.calls.at(-1)![1] as string)
+    expect(Date.now() - from).toBeLessThanOrEqual(2 * 86_400_000 + 60_000)
   })
 
   it('deleteMed op goes through a table delete', async () => {

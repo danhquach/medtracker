@@ -10,7 +10,7 @@ const sb = vi.hoisted(() => ({
 vi.mock('../../lib/supabase', () => ({
   supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
 }))
-const offline = vi.hoisted(() => ({ reset: vi.fn(() => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
+const offline = vi.hoisted(() => ({ reset: vi.fn((_id?: string) => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
 vi.mock('../../data/offline/sync', () => ({ resetForSignOut: offline.reset, flush: offline.flush, pendingCount: offline.pending }))
 vi.mock('../../data/profile', () => ({ markPasswordSet: vi.fn() }))
 
@@ -101,12 +101,17 @@ describe('offline data on account changes', () => {
     expect(await unsyncedBeforeSignOut()).toBe(2)
     expect(offline.flush).toHaveBeenCalled()
   })
-  it('signIn over an existing session wipes that session’s offline data first', async () => {
+  it('signIn over a guest session wipes the guest’s offline data after signing in', async () => {
     const order: string[] = []
-    offline.reset.mockImplementation(async () => void order.push('reset'))
-    sb.signIn.mockImplementation(async () => (order.push('signIn'), { error: null }))
+    offline.reset.mockImplementation(async (id?: string) => void order.push(`reset:${id}`))
+    sb.signIn.mockImplementation(async () => (order.push('signIn'), { data: { user: { id: 'other' } }, error: null }))
     await signIn('a@example.com', 'pw')
-    expect(order).toEqual(['reset', 'signIn'])
+    expect(order).toEqual(['signIn', 'reset:guest'])
+  })
+  it('a failed signIn leaves the guest’s offline data alone', async () => {
+    sb.signIn.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Invalid login credentials' } } as never)
+    await expect(signIn('a@example.com', 'bad')).rejects.toMatchObject({ message: 'Invalid login credentials' })
+    expect(offline.reset).not.toHaveBeenCalled()
   })
 })
 

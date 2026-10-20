@@ -22,7 +22,11 @@ async function getStore(): Promise<{ userId: string; store: Store }> {
   if (resetting) throw new Error('Signing out')
   if (current?.userId !== userId) {
     if (current) void current.store.then((s) => s.close())
-    current = { userId, store: openStore(userId) }
+    // Deleted elsewhere (sign-out in another tab): drop the dead connection so the next call reopens.
+    const opened: Promise<Store> = openStore(userId, () => {
+      if (current?.store === opened) current = null
+    })
+    current = { userId, store: opened }
   }
   return { userId, store: await current.store }
 }
@@ -89,8 +93,8 @@ async function send(op: Op): Promise<void> {
 async function refresh(store: Store, userId: string): Promise<void> {
   const cache = await store.readCache()
   const nowMs = Date.now()
-  const earliest = cache.doses.reduce((min, d) => Math.min(min, Date.parse(d.scheduled_for)), nowMs - 86_400_000)
-  const from = new Date(earliest).toISOString()
+  // A fixed recent window (what Today and its week strip show), not all cached history: keeps online writes cheap.
+  const from = new Date(nowMs - 2 * 86_400_000).toISOString()
   const to = new Date(nowMs + 3 * 86_400_000).toISOString()
   const [meds, schedules, profile, doses] = await Promise.all([
     supabase.from('medications').select('*').order('name'),
@@ -242,19 +246,21 @@ export async function dismissFailed(seq: number): Promise<void> {
   await emit()
 }
 
-/** Forget the signed-in user's cache and outbox. Call while still signed in, after sign-out was confirmed. */
-export async function resetForSignOut(): Promise<void> {
+/** Forget a user's cache and outbox (default: the signed-in user). Call after sign-out was confirmed. */
+export async function resetForSignOut(forUserId?: string): Promise<void> {
   resetting = true // first, before any await: no new run or store may start
   try {
     while (running) await running.catch(() => undefined)
     let userId: string
     try {
-      userId = current?.userId ?? (await currentUserId())
+      userId = forUserId ?? current?.userId ?? (await currentUserId())
     } catch {
       return
     }
-    if (current) (await current.store).close()
-    current = null
+    if (current?.userId === userId) {
+      ;(await current.store).close()
+      current = null
+    }
     await deleteStore(userId)
   } finally {
     resetting = false
