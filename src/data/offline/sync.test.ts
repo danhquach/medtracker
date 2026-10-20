@@ -307,6 +307,16 @@ describe('sync engine', () => {
     expect(Date.now() - from).toBeLessThanOrEqual(2 * 86_400_000 + 60_000)
   })
 
+  it('forgetOtherUsers keeps only the signed-in user’s store', async () => {
+    const other = await store.openStore('someone-else')
+    await other.enqueue(addStock(9))
+    other.close()
+    await sync.forgetOtherUsers()
+    const names = (await indexedDB.databases()).map((d) => d.name)
+    expect(names).not.toContain('medtracker-offline-someone-else')
+    expect(names).toContain(`medtracker-offline-${user.id}`)
+  })
+
   it('deleteMed op goes through a table delete', async () => {
     del.mockImplementation(() => Promise.resolve({ error: null }))
     await sync.submit({ opId: 'x', at: new Date().toISOString(), kind: 'deleteMed', medId: 'm1' }, () => undefined)

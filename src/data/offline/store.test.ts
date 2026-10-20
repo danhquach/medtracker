@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Op } from './ops'
-import { deleteStore, openStore } from './store'
+import { deleteOtherStores, deleteStore, openStore } from './store'
 
 const op = (n: number): Op => ({ opId: `op${n}`, at: '2026-10-20T00:00:00.000Z', kind: 'deleteMed', medId: `m${n}` })
 const med = { id: 'm1', name: 'A' } as never
@@ -61,6 +61,15 @@ describe('offline store', () => {
     const again = await openStore('open')
     expect(await again.list()).toEqual([])
     again.close()
+  })
+
+  it('deleteOtherStores removes every other user’s store and keeps this one', async () => {
+    for (const u of ['keep', 'old1', 'old2']) (await openStore(u)).close()
+    await deleteOtherStores('keep')
+    const names = (await indexedDB.databases()).map((d) => d.name)
+    expect(names).toContain('medtracker-offline-keep')
+    expect(names).not.toContain('medtracker-offline-old1')
+    expect(names).not.toContain('medtracker-offline-old2')
   })
 
   it('deleteStore removes the database', async () => {

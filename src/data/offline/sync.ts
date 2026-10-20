@@ -2,7 +2,7 @@
 // outbox, and sent to Supabase in order when there is a connection. Reads fall back to the cache.
 import { currentUserId, supabase } from '../../lib/supabase'
 import { applyLocal, toRpc, type Op } from './ops'
-import { deleteStore, openStore, type Cache, type OutboxItem, type Store } from './store'
+import { deleteOtherStores, deleteStore, openStore, type Cache, type OutboxItem, type Store } from './store'
 
 export type SyncStatus = { online: boolean; syncing: boolean; pending: number; failed: OutboxItem[]; needsSignIn: boolean }
 
@@ -307,6 +307,14 @@ export async function resetForSignOut(forUserId?: string, waitMs = 5000): Promis
   }
   status = { ...status, pending: 0, failed: [], needsSignIn: false }
   for (const fn of listeners) fn(status)
+}
+
+/**
+ * Deletes offline data other users left on this device (e.g. a session that expired, then someone
+ * else signed in). Their unsynced changes can't be sent by this user anyway.
+ */
+export async function forgetOtherUsers(): Promise<void> {
+  await deleteOtherStores(await currentUserId())
 }
 
 /** Flush now, when the connection returns, and when the app comes back to the foreground. */
