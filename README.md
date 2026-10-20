@@ -153,7 +153,7 @@ Reminders not arriving:
 
 - Android battery optimization can delay pushes (tip above).
 - iOS requires Home Screen install + iOS 16.4+.
-- Supabase free projects pause after about a week idle; open the dashboard to restore.
+- Supabase free projects pause after about a week idle; open the dashboard to restore. The "Keep Supabase awake" workflow (`.github/workflows/keep-alive.yml`) pings the REST API daily to prevent this. GitHub disables scheduled workflows after 60 days without repo activity; re-enable it in the Actions tab if that happens.
 - Per-minute cron is about 43k function calls/month. Verify against the current free quota. Fallback: change the schedule to `*/5 * * * *` (in `0007_cron.sql` before prod exists; via a NEW migration after).
 
 ## Manual device checklist
