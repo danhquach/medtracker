@@ -3,7 +3,7 @@ import { flush, pendingCount, resetForSignOut } from '../../data/offline/sync'
 import { markPasswordSet } from '../../data/profile'
 import { removeThisDeviceSubscription } from '../../push/subscribe'
 import { appUrl } from '../../lib/basePath'
-import { supabase } from '../../lib/supabase'
+import { sessionUser, supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 
 export const GUEST_LEFT_BEHIND = 'Your guest data on this device will be left behind.'
@@ -101,9 +101,15 @@ export async function signOut(): Promise<void> {
   } finally {
     clearTimeout(timer)
   }
-  await forgetOfflineData()
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  // End the session first, then wipe this user's offline copy: another tab can't reopen it once
+  // the session is gone. The wipe runs even if sign-out fails (e.g. account already deleted).
+  const userId = (await sessionUser())?.id // also right offline with an expired token
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  } finally {
+    if (userId) await forgetOfflineData(userId)
+  }
 }
 
 export async function setPassword(password: string): Promise<void> {

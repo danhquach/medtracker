@@ -8,6 +8,7 @@ const sb = vi.hoisted(() => ({
   getSession: vi.fn(() => Promise.resolve({ data: { session: { user: { id: 'guest' } } } })),
 }))
 vi.mock('../../lib/supabase', () => ({
+  sessionUser: () => sb.getSession().then((r) => r.data.session?.user ?? null),
   supabase: { auth: { updateUser: sb.updateUser, signOut: sb.signOut, signInWithPassword: sb.signIn, getSession: sb.getSession } },
 }))
 const offline = vi.hoisted(() => ({ reset: vi.fn((_id?: string) => Promise.resolve()), flush: vi.fn(() => Promise.resolve()), pending: vi.fn(() => Promise.resolve(0)) }))
@@ -64,9 +65,10 @@ describe('signOut', () => {
     const order: string[] = []
     push.remove.mockImplementation(async () => void order.push('remove'))
     sb.signOut.mockImplementation(async () => (order.push('signOut'), { error: null }))
-    offline.reset.mockImplementation(async () => void order.push('reset'))
+    offline.reset.mockImplementation(async (id?: string) => void order.push(`reset:${id}`))
     await signOut()
-    expect(order).toEqual(['remove', 'reset', 'signOut'])
+    // Session cleared first, so other tabs can't reopen the store between the wipe and sign-out.
+    expect(order).toEqual(['remove', 'signOut', 'reset:guest'])
   })
   it('still signs out when the offline reset fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
