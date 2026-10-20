@@ -5,7 +5,7 @@ import { getProfile, markTimeZoneChosen, updateProfile, type ProfilePatch } from
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 import { useGoBack } from '../../lib/useGoBack'
-import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled } from '../../push/subscribe'
+import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled, type DeviceState } from '../../push/subscribe'
 import { isGuest, needsPasswordFinish, signOut } from '../auth/auth'
 import CredentialsForm from '../auth/CredentialsForm'
 import LoadError from '../auth/LoadError'
@@ -192,149 +192,205 @@ export default function Settings() {
   const zones = profile ? timeZones(profile.time_zone, detectedZone) : []
 
   return (
-    <main className="stack">
+    <main className="stack settings">
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {profileError && !profile && <LoadError message={profileError} onRetry={() => void loadProfile()} />}
       {needsPasswordFinish(user, profile) && <SetPasswordForm />}
 
-      <section className="stack" aria-labelledby="st-profile">
-        <h3 id="st-profile">Profile</h3>
-        <p>{guest ? 'Guest' : (user?.email ?? '')}</p>
-        {profile && (
-          <>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                saveNickname()
-              }}
-            >
-              <label>
-                Nickname <Saved show={saved === 'nickname'} />
-                <input value={nickname} maxLength={40} onChange={(e) => setNickname(e.target.value)} onBlur={saveNickname} />
-              </label>
-            </form>
-            <label>
-              Time zone <Saved show={saved === 'time_zone'} />
+      <ReminderStatus state={device.state} zone={profile?.time_zone ?? null} />
+
+      <section className="settings-group" aria-labelledby="st-notif">
+        <h3 id="st-notif">Reminders</h3>
+        <div className="settings-card">
+          {device.state === 'unsupported' && <p className="muted">This browser cannot receive notifications.</p>}
+          {device.state === 'denied' && (
+            <p role="status">Notifications are blocked. Allow them for this site in your browser settings, then reload.</p>
+          )}
+          {(device.state === 'on' || device.state === 'off') && (
+            <Setting htmlFor="st-device" label="Notifications on this device" desc="Alerts you when a dose is due.">
               <input
-                list="st-zones"
-                autoComplete="off"
-                spellCheck={false}
-                aria-describedby="st-zone-hint"
-                value={zoneText}
-                onChange={(e) => {
-                  setZoneText(e.target.value)
-                  if (zones.includes(e.target.value)) saveZone(e.target.value)
-                }}
-                onBlur={() => setZoneText(profile.time_zone)}
+                id="st-device"
+                type="checkbox"
+                role="switch"
+                aria-describedby="st-device-desc"
+                checked={device.state === 'on'}
+                disabled={pendingDevice}
+                aria-busy={pendingDevice}
+                onChange={() => void toggleDevice()}
               />
-            </label>
-            <datalist id="st-zones">
-              {zones.map((z) => (
-                <option key={z} value={z} />
-              ))}
-            </datalist>
-            <p id="st-zone-hint" className="muted hint">
-              Type a city to search, for example Toronto.
-            </p>
-            {detectedZone && detectedZone !== profile.time_zone && (
-              <button type="button" onClick={() => saveZone(detectedZone)}>
-                Use this device's time zone ({detectedZone})
+            </Setting>
+          )}
+          {device.state === 'on' && (
+            <Setting desc="Check that alerts arrive on this device." wide>
+              <button type="button" onClick={() => void sendTest()}>
+                Send test notification
               </button>
-            )}
-          </>
-        )}
-        {guest ? (
-          guestView === 'menu' ? (
-            <div className="stack">
-              <p>Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
-              <div className="row">
-                <button type="button" className="primary" onClick={() => setGuestView('create')}>
-                  Create profile
-                </button>
-                <button type="button" onClick={() => setGuestView('signin')}>
-                  Sign in
-                </button>
-              </div>
-            </div>
-          ) : (
-            <CredentialsForm
-              mode={guestView === 'create' ? 'upgrade' : 'signin'}
-              guest={guestView === 'signin'}
-              onCancel={() => setGuestView('menu')}
-            />
-          )
-        ) : (
-          <button type="button" onClick={() => void doSignOut()}>
-            Sign out
-          </button>
-        )}
+            </Setting>
+          )}
+          {profile && (
+            <Setting
+              htmlFor="st-snooze"
+              label={
+                <>
+                  Snooze length <Saved show={saved === 'snooze_minutes'} />
+                </>
+              }
+              desc="How long Snooze waits before reminding you again."
+            >
+              <select
+                id="st-snooze"
+                aria-describedby="st-snooze-desc"
+                value={profile.snooze_minutes}
+                onChange={(e) => void save({ snooze_minutes: Number(e.target.value) as Profile['snooze_minutes'] })}
+              >
+                {SNOOZE.map((m) => (
+                  <option key={m} value={m}>
+                    {m} minutes
+                  </option>
+                ))}
+              </select>
+            </Setting>
+          )}
+        </div>
+        {device.state !== 'unsupported' && <p className="muted settings-note">{BATTERY_TIP}</p>}
       </section>
 
-      <section className="stack" aria-labelledby="st-notif">
-        <h3 id="st-notif">Notifications on this device</h3>
-        {device.state === 'unsupported' && <p className="muted">This browser cannot receive notifications.</p>}
-        {device.state === 'denied' && (
-          <p role="status">Notifications are blocked. Allow them for this site in your browser settings, then reload.</p>
-        )}
-        {(device.state === 'on' || device.state === 'off') && (
-          <label>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={device.state === 'on'}
-              disabled={pendingDevice}
-              aria-busy={pendingDevice}
-              onChange={() => void toggleDevice()}
-            />{' '}
-            Notifications on this device
-          </label>
-        )}
-        {device.state === 'on' && (
-          <button type="button" onClick={() => void sendTest()}>
-            Send test notification
-          </button>
-        )}
-        {device.state !== 'unsupported' && <p className="muted">{BATTERY_TIP}</p>}
+      <section className="settings-group" aria-labelledby="st-profile">
+        <h3 id="st-profile">Profile</h3>
+        <div className="settings-card">
+          <div className="setting">
+            <div className="setting-text">
+              <p className="setting-name">{guest ? 'Guest' : (user?.email ?? '')}</p>
+              {!guest && <p className="setting-desc">Signed in</p>}
+            </div>
+            {!guest && (
+              <button type="button" onClick={() => void doSignOut()}>
+                Sign out
+              </button>
+            )}
+          </div>
+          {guest &&
+            (guestView === 'menu' ? (
+              <div className="setting wide">
+                <p className="setting-desc">Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
+                <div className="row">
+                  <button type="button" className="primary" onClick={() => setGuestView('create')}>
+                    Create profile
+                  </button>
+                  <button type="button" onClick={() => setGuestView('signin')}>
+                    Sign in
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="setting wide">
+                <CredentialsForm
+                  mode={guestView === 'create' ? 'upgrade' : 'signin'}
+                  guest={guestView === 'signin'}
+                  onCancel={() => setGuestView('menu')}
+                />
+              </div>
+            ))}
+          {profile && (
+            <>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  saveNickname()
+                }}
+              >
+                <Setting
+                  htmlFor="st-nickname"
+                  label={
+                    <>
+                      Nickname <Saved show={saved === 'nickname'} />
+                    </>
+                  }
+                  wide
+                >
+                  <input id="st-nickname" value={nickname} maxLength={40} onChange={(e) => setNickname(e.target.value)} onBlur={saveNickname} />
+                </Setting>
+              </form>
+              <Setting
+                htmlFor="st-zone"
+                label={
+                  <>
+                    Time zone <Saved show={saved === 'time_zone'} />
+                  </>
+                }
+                desc="Dose times follow this time zone. Type a city to search, for example Toronto."
+                wide
+              >
+                <input
+                  id="st-zone"
+                  list="st-zones"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-describedby="st-zone-desc"
+                  value={zoneText}
+                  onChange={(e) => {
+                    setZoneText(e.target.value)
+                    if (zones.includes(e.target.value)) saveZone(e.target.value)
+                  }}
+                  onBlur={() => setZoneText(profile.time_zone)}
+                />
+                <datalist id="st-zones">
+                  {zones.map((z) => (
+                    <option key={z} value={z} />
+                  ))}
+                </datalist>
+                {detectedZone && detectedZone !== profile.time_zone && (
+                  <button type="button" onClick={() => saveZone(detectedZone)}>
+                    Use this device's time zone ({detectedZone})
+                  </button>
+                )}
+              </Setting>
+            </>
+          )}
+        </div>
       </section>
 
       {profile && (
-        <section className="stack" aria-labelledby="st-prefs">
+        <section className="settings-group" aria-labelledby="st-prefs">
           <h3 id="st-prefs">Preferences</h3>
-          <label>
-            Snooze length <Saved show={saved === 'snooze_minutes'} />
-            <select
-              value={profile.snooze_minutes}
-              onChange={(e) => void save({ snooze_minutes: Number(e.target.value) as Profile['snooze_minutes'] })}
+          <div className="settings-card">
+            <Setting
+              htmlFor="st-suggest"
+              label={
+                <>
+                  Medication name suggestions <Saved show={saved === 'suggestions_enabled'} />
+                </>
+              }
+              desc="Suggests names from public drug databases as you type a new med."
             >
-              {SNOOZE.map((m) => (
-                <option key={m} value={m}>
-                  {m} minutes
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={profile.suggestions_enabled}
-              onChange={(e) => void save({ suggestions_enabled: e.target.checked })}
-            />{' '}
-            Medication name suggestions <Saved show={saved === 'suggestions_enabled'} />
-          </label>
+              <input
+                id="st-suggest"
+                type="checkbox"
+                role="switch"
+                aria-describedby="st-suggest-desc"
+                checked={profile.suggestions_enabled}
+                onChange={(e) => void save({ suggestions_enabled: e.target.checked })}
+              />
+            </Setting>
+          </div>
         </section>
       )}
 
-      <section className="stack" aria-labelledby="st-data">
+      <section className="settings-group" aria-labelledby="st-data">
         <h3 id="st-data">Your data</h3>
-        <button type="button" onClick={() => void exportPlan()}>
-          Export med plan (CSV)
-        </button>
+        <div className="settings-card">
+          <Setting desc="Download your meds and schedules as a spreadsheet file." wide>
+            <button type="button" onClick={() => void exportPlan()}>
+              Export med plan (CSV)
+            </button>
+          </Setting>
+        </div>
       </section>
 
-      <section className="stack danger-zone" aria-labelledby="st-danger">
+      <section className="settings-group danger-zone" aria-labelledby="st-danger">
         <h3 id="st-danger">Danger zone</h3>
+        <p className="setting-desc">Deleting your profile removes all your meds and history. This can't be undone.</p>
         <button ref={deleteButton} type="button" className="danger" onClick={() => setDeleting(true)}>
           Delete profile
         </button>
@@ -343,6 +399,68 @@ export default function Settings() {
         )}
       </section>
     </main>
+  )
+}
+
+/** One settings row: name and plain-language description on the left, the control on the right (or below, when wide). */
+function Setting({
+  htmlFor,
+  label,
+  desc,
+  wide,
+  children,
+}: {
+  htmlFor?: string
+  label?: React.ReactNode
+  desc?: string
+  wide?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className={wide ? 'setting wide' : 'setting'}>
+      <div className="setting-text">
+        {label && (
+          <label className="setting-name" htmlFor={htmlFor}>
+            {label}
+          </label>
+        )}
+        {desc && (
+          <p id={htmlFor ? `${htmlFor}-desc` : undefined} className="setting-desc">
+            {desc}
+          </p>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** "America/Port_of_Spain" → "Port of Spain". */
+const zoneCity = (zone: string) => (zone.split('/').pop() ?? zone).replace(/_/g, ' ')
+
+/** One glance at whether reminders will reach this device. */
+function ReminderStatus({ state, zone }: { state: DeviceState | null; zone: string | null }) {
+  if (!state) return null
+  const on = state === 'on'
+  const title = on
+    ? 'Reminders are on'
+    : state === 'off'
+      ? 'Reminders are off on this device'
+      : state === 'denied'
+        ? "Reminders can't reach this device"
+        : "This browser can't show reminders"
+  const detail = on
+    ? `This device${zone ? ` · ${zoneCity(zone)} time` : ''}`
+    : state === 'off'
+      ? 'Turn on notifications below to get dose alerts.'
+      : state === 'denied'
+        ? 'Notifications are turned off for this site.'
+        : 'Try a different browser to get dose alerts.'
+  return (
+    <div className={on ? 'status-card ok' : 'status-card warn'}>
+      <p className="status-card-title">{title}</p>
+      <p className="muted">{detail}</p>
+    </div>
   )
 }
 
