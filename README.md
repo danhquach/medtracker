@@ -57,12 +57,31 @@ npx supabase db reset --linked --yes
 
 **WARNING: this wipes the linked project. The linked project is production, so do not run it until a separate test project exists.**
 
-CI (`.github/workflows/ci.yml`) runs on pull requests and on pushes to `main` (the repo is public, so Actions minutes are free). It lints, type-checks, runs unit tests and builds. Integration and e2e tests need secrets, so run them locally. The required status check is "Lint, test, build". Deploy to GitHub Pages happens on merge to `main`.
+## Workflow
 
-Branch and tag protection:
+Every change reaches `main` through a pull request; never push or `git merge` to `main` directly.
 
-- `main`: PR required, no force-push or deletion, squash or merge commits, stale reviews dismissed, conversations resolved, required check "Lint, test, build" (strict: branch must be up to date).
-- Tags `v*`: admins only.
+1. Pick or file a GitHub issue. Titles start with `MT-<issue number>: `.
+2. Branch from the latest `origin/main`.
+3. Run `npm run lint`, `npx tsc --noEmit -p tests`, `npm test` and `npm run build` (which also type-checks `src`) locally; also run `npm run test:int` / `npm run test:e2e` when the change touches Supabase or user flows (see Tests).
+4. Open a PR against `main`. CI runs on it.
+5. Merge only when all green: review findings resolved, CI passes, and the issue's acceptance criteria are met. Squash or merge commit; auto-merge is allowed and does the same check. GitHub enforces only CI and resolved review threads; no approval is required, so checking the findings and acceptance criteria is up to whoever merges.
+6. The merge to `main` reruns CI and deploys to GitHub Pages.
+
+CI (`.github/workflows/ci.yml`, [runs](https://github.com/danhquach/medtracker/actions/workflows/ci.yml)) runs on pull requests, on pushes to `main` and manually (`workflow_dispatch`); the repo is public, so Actions minutes are free.
+
+- **Lint, unit, build:** `npm ci`, lint, type-check (`src` and `tests`), unit tests, build. On `main` it builds for Pages (`build:pages`, base `/medtracker/`) and uploads the artifact. PRs build with base `/`, so a problem that shows only under `/medtracker/` (asset paths, router, service worker scope) first appears on the live site after merge.
+- **Lint, test, build:** the required status check; passes only when the build job succeeded.
+- **Deploy to GitHub Pages:** `main` only, after the check passes.
+
+Integration and e2e tests need secrets, so CI does not run them; run them locally.
+
+"Update behind PRs" (`.github/workflows/update-behind-prs.yml`) runs on each push to `main`. Because `main` requires PR branches to be up to date, it merges `main` into every open PR that has auto-merge on, which reruns CI and lets auto-merge finish. It needs the repo secret `AUTO_UPDATE_TOKEN`: a fine-grained PAT for this repo with Contents and Pull requests read/write (a `GITHUB_TOKEN` push would not trigger CI). PRs without auto-merge must be updated by hand ("Update branch").
+
+Branch and tag protection (rulesets):
+
+- `main` (`protect-main`): PR required, no force-push or deletion, squash or merge commits, stale reviews dismissed, conversations resolved, required check "Lint, test, build" (strict: branch must be up to date).
+- Tags `v*` (`protect-release-tags`): admins only.
 
 ## Deploy (owner)
 
@@ -84,7 +103,7 @@ Steps (the existing project is production, see GitHub issue #10; check each step
    ```sh
    npx web-push generate-vapid-keys
    ```
-   The public key goes in `VAPID_PUBLIC_KEY` (secrets below) and in `VITE_VAPID_PUBLIC_KEY` (Vercel env, step 7). The private key goes only in `VAPID_PRIVATE_KEY` (secrets below); never commit it or put it in a `VITE_` variable. `ACTION_TOKEN_KEY` and `CRON_SECRET` are new random values.
+   The public key goes in `VAPID_PUBLIC_KEY` (secrets below) and in `VITE_VAPID_PUBLIC_KEY` (Actions variable, step 7). The private key goes only in `VAPID_PRIVATE_KEY` (secrets below); never commit it or put it in a `VITE_` variable. `ACTION_TOKEN_KEY` and `CRON_SECRET` are new random values.
    ```sh
    npx supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:... CRON_SECRET=... ACTION_TOKEN_KEY=...
    ```
@@ -97,8 +116,8 @@ Steps (the existing project is production, see GitHub issue #10; check each step
    select vault.create_secret('<https://project-ref.supabase.co>', 'project_url');
    select vault.create_secret('<new-random-secret>', 'cron_secret');
    ```
-6. Dashboard: turn ON email confirmation and anonymous sign-ins. Set Site URL and redirect URLs to the Vercel domain (`createProfile` redirects to `${origin}/settings?finish=1`).
-7. Vercel: import the repo, set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VAPID_PUBLIC_KEY`. `vercel.json` handles the SPA rewrite and `sw.js` no-cache header.
+6. Dashboard: turn ON email confirmation and anonymous sign-ins. Set Site URL and redirect URLs to the GitHub Pages URL (see Deploy to GitHub Pages, step 4; `createProfile` redirects to `${origin}/settings?finish=1`).
+7. Frontend: follow Deploy to GitHub Pages below. `vercel.json` is left over from an earlier Vercel setup; Pages does not use it.
 
 From the first prod deploy, migrations are append-only: change schema or cron only via a NEW migration.
 
@@ -150,4 +169,4 @@ Reminders not arriving:
 
 ## Tracking
 
-GitHub issues #1-#10 (labels: security, hardening, polish, tests, tooling, ops).
+GitHub issues, titled `MT-<issue number>: ...` ([open issues](https://github.com/danhquach/medtracker/issues)). Labels include security, hardening, polish, tests, tooling, ops, bug, enhancement, accessibility and documentation.
