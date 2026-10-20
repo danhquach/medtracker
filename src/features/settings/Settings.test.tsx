@@ -180,6 +180,34 @@ describe('Settings', () => {
     expect(screen.queryByRole('button', { name: 'Send test notification' })).toBeNull()
   })
 
+  it('says at the top that reminders are on, with the time zone city', async () => {
+    m.deviceState.state = 'on'
+    await loaded()
+    expect(screen.getByText('Reminders are on')).toBeTruthy()
+    expect(screen.getByText('This device · Toronto time')).toBeTruthy()
+  })
+
+  it.each([
+    ['off', 'Reminders are off on this device'],
+    ['denied', "Reminders can't reach this device"],
+    ['unsupported', "This browser can't show reminders"],
+  ])('says at the top when reminders are %s', async (state, title) => {
+    m.deviceState.state = state
+    await loaded()
+    expect(screen.getByText(title)).toBeTruthy()
+    expect(screen.queryByText('Reminders are on')).toBeNull()
+  })
+
+  it('describes each setting in plain language', async () => {
+    m.deviceState.state = 'on'
+    await loaded()
+    const desc = (el: HTMLElement) => document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent
+    expect(desc(screen.getByRole('switch', { name: /on this device/i }))).toMatch(/dose is due/)
+    expect(desc(screen.getByLabelText(/Snooze length/))).toMatch(/Snooze waits/)
+    expect(desc(screen.getByLabelText(/Time zone/))).toMatch(/Dose times follow/)
+    expect(desc(screen.getByRole('switch', { name: /suggestions/i }))).toMatch(/as you type/)
+  })
+
   it('hides the battery tip when the browser cannot receive notifications', async () => {
     m.deviceState.state = 'unsupported'
     await loaded()
