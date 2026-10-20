@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      # Integration and e2e test files are type-checked even though CI does not run them.
+      - run: npx tsc --noEmit -p tests
       # Unit tests only: integration and e2e tests need secrets.
       - run: npm test
       - name: Build (no deploy)
