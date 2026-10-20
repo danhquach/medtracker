@@ -103,10 +103,14 @@ function clampClientTime(at: unknown): string {
 const appliedOps = new Set<string>()
 
 // Offline switch for exercising offline sync in `dev:mock`: every call fails like a dropped fetch.
-let offline = false
+// Kept in localStorage so it survives a reload, like real airplane mode.
+const OFFLINE_KEY = 'medtracker-mock-offline'
+let offline = localStorage.getItem(OFFLINE_KEY) === '1'
 const offlineResult = (): Result => ({ data: null, error: new TypeError('Failed to fetch') })
 ;(window as unknown as { __mockOffline: (on: boolean) => void }).__mockOffline = (on: boolean) => {
   offline = on
+  if (on) localStorage.setItem(OFFLINE_KEY, '1')
+  else localStorage.removeItem(OFFLINE_KEY)
   window.dispatchEvent(new Event(on ? 'offline' : 'online'))
 }
 
