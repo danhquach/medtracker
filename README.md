@@ -156,7 +156,7 @@ Dose times follow the profile's time zone (`0013_time_zones.sql`; the offline cl
 - A time skipped when clocks spring forward moves forward by the gap: 02:30 becomes 03:30.
 - A time that happens twice when clocks fall back is the second one, after the change.
 - A med has one dose per instant, so 02:00 and 03:00 on a spring-forward day give one dose that day.
-- Auto-detect adopts a device's zone only until a zone is set; after that, only Settings changes it.
+- Auto-detect adopts a device's zone only until a zone is set; after that, only Settings changes it. Accounts from before 0013 still on the default zone (America/Toronto) count as not set.
 
 ## Known risks
 

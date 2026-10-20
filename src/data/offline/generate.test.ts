@@ -69,4 +69,10 @@ describe('generateLocalDoses', () => {
       '2026-11-02T13:00:00.000Z',
     ])
   })
+
+  it('spring-forward day: 02:30 moves to 03:30; 02:00 and 03:00 give one dose (as the server)', () => {
+    const nowMs = Date.parse('2027-03-14T05:00:00Z') // 00:00 EST
+    const rows = run({ nowMs, schedules: [sched({ times: ['02:00:00', '02:30:00', '03:00:00'] })] })
+    expect(times(rows).filter((t) => t.startsWith('2027-03-14'))).toEqual(['2027-03-14T07:00:00.000Z', '2027-03-14T07:30:00.000Z'])
+  })
 })
