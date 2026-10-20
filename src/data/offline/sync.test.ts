@@ -106,6 +106,13 @@ describe('sync engine', () => {
     expect(await outbox()).toEqual([])
   })
 
+  it.each([503, 502, 429])('a %i server error keeps the op queued instead of dropping it', async (code) => {
+    rpc.mockImplementation(() => Promise.resolve({ data: null, error: { code: '', message: 'Unexpected token <' }, status: code }))
+    expect(await sync.submit(addStock(1, 5), stockOf)).toBe(15)
+    expect((await outbox()).map((i) => [i.op.opId, i.state])).toEqual([['op1', 'pending']])
+    expect(sync.getStatus().online).toBe(true)
+  })
+
   it('null result is a permanent failure', async () => {
     rpc.mockImplementation(() => ok(null))
     const op: Op = { opId: 'd', at: new Date().toISOString(), kind: 'doseStatus', medId: 'm1', scheduledFor: '2026-10-20T12:00:00.000Z', status: 'taken' }

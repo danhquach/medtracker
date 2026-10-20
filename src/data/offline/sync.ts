@@ -40,9 +40,11 @@ async function stillSignedIn(userId: string): Promise<boolean> {
   }
 }
 
-export function classify(e: unknown): 'network' | 'auth' | 'permanent' {
+export function classify(e: unknown): 'network' | 'retry' | 'auth' | 'permanent' {
   const err = (e ?? {}) as ErrorLike
   const msg = err.message ?? ''
+  // Server overloaded or down (5xx, 429): try again later, never drop the change.
+  if (err.status === 429 || (err.status ?? 0) >= 500) return 'retry'
   if (err.status === 401 || err.code === 'PGRST301' || /jwt|refresh token/i.test(msg)) return 'auth'
   if (err.name === 'TypeError' || e instanceof TypeError || /fetch|network/i.test(msg)) return 'network'
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'network'
@@ -75,15 +77,18 @@ export function getStatus(): SyncStatus {
   return status
 }
 
+/** The error with the HTTP status attached (PostgREST errors don't carry it). */
+const withStatus = (error: object, status: number) => Object.assign(new Error((error as ErrorLike).message), error, { status })
+
 async function send(op: Op): Promise<void> {
   const call = toRpc(op)
   if ('table' in call) {
-    const { error } = await supabase.from(call.table).delete().eq('id', call.deleteId)
-    if (error) throw error
+    const { error, status } = await supabase.from(call.table).delete().eq('id', call.deleteId)
+    if (error) throw withStatus(error, status)
     return
   }
-  const { data, error } = await supabase.rpc(call.name, call.args)
-  if (error) throw error
+  const { data, error, status } = await supabase.rpc(call.name, call.args)
+  if (error) throw withStatus(error, status)
   if (op.kind === 'doseStatus' && !(data as { id?: string } | null)?.id) {
     throw Object.assign(new Error('That dose is no longer scheduled, so it was not saved.'), { code: STALE_DOSE_CODE })
   }
@@ -144,6 +149,7 @@ async function run(): Promise<void> {
         patch = { needsSignIn: true }
         break
       }
+      if (kind === 'retry') break // stays pending; the next flush tries again
       await store.update({ ...item, state: 'failed', error: (e as ErrorLike).message ?? String(e), tries: item.tries + 1 })
       results.set(item.op.opId, { ok: false, error: e })
       sent = true
