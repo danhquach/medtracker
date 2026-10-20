@@ -119,6 +119,23 @@ function changeStock(medId: unknown, delta: number) {
   if (m && m.stock !== null) m.stock = Math.max(m.stock + delta, 0)
 }
 
+// 0012: client action times are clamped to the last 7 days and never the future.
+function clampClientTime(at: unknown): string {
+  const t = typeof at === 'string' ? Date.parse(at) : NaN
+  const nowMs = Date.now()
+  return new Date(Number.isNaN(t) ? nowMs : Math.min(Math.max(t, nowMs - 7 * 86_400_000), nowMs)).toISOString()
+}
+
+const appliedOps = new Set<string>()
+
+// Offline switch for exercising offline sync in `dev:mock`: every call fails like a dropped fetch.
+let offline = false
+const offlineResult = (): Result => ({ data: null, error: new TypeError('Failed to fetch') })
+;(window as unknown as { __mockOffline: (on: boolean) => void }).__mockOffline = (on: boolean) => {
+  offline = on
+  window.dispatchEvent(new Event(on ? 'offline' : 'online'))
+}
+
 const rpcs: Record<string, (a: Row) => Result> = {
   touch_last_seen: () => ok(null),
   mark_password_set: () => {
@@ -136,12 +153,16 @@ const rpcs: Record<string, (a: Row) => Result> = {
   save_med: (a) => {
     const input = a.p_med as Row
     let id = input.id as string | undefined
-    if (id) {
+    if (id && a.p_create) {
+      const existing = db.tables.medications.find((x) => x.id === id)
+      if (existing) return existing.user_id === uid() ? ok(id) : fail('medication id belongs to another user')
+    }
+    if (id && !a.p_create) {
       const m = db.tables.medications.find((x) => x.id === id && x.user_id === uid())
       if (!m) return fail('medication not found')
       Object.assign(m, input, { updated_at: now() })
     } else {
-      id = crypto.randomUUID()
+      id ??= crypto.randomUUID()
       db.tables.medications.push({ ...input, id, user_id: uid(), paused: false, refill_alerted_at: null, created_at: now(), updated_at: now() })
     }
     const skipTimes = (db.tables.schedules.filter((s) => s.medication_id === id) as unknown as Schedule[]).flatMap((s) => s.times.map(hhmmss))
@@ -157,6 +178,10 @@ const rpcs: Record<string, (a: Row) => Result> = {
     if (!m) return fail('medication not found')
     const qty = a.p_qty as number
     if (!(Number.isFinite(qty) && qty > 0)) return fail('quantity must be greater than 0')
+    if (a.p_op) {
+      if (appliedOps.has(a.p_op as string)) return ok(m.stock)
+      appliedOps.add(a.p_op as string)
+    }
     m.stock = (m.stock ?? 0) + qty
     return ok(m.stock)
   },
@@ -168,16 +193,43 @@ const rpcs: Record<string, (a: Row) => Result> = {
     if (a.p_status === 'taken') changeStock(d.medication_id, -units)
     else if (d.status === 'taken') changeStock(d.medication_id, units)
     d.status = a.p_status as DoseEvent['status']
-    d.acted_at = d.status === 'pending' ? null : now()
+    d.acted_at = d.status === 'pending' ? null : clampClientTime(a.p_acted_at)
     return ok(d)
+  },
+  set_dose_status_at: (a) => {
+    const d = db.tables.dose_events.find(
+      (x) => x.user_id === uid() && x.medication_id === a.p_med && Date.parse(x.scheduled_for as string) === Date.parse(a.p_scheduled_for as string),
+    )
+    return d ? rpcs.set_dose_status({ p_dose: d.id, p_status: a.p_status, p_acted_at: a.p_acted_at }) : ok(null)
   },
   log_prn_dose: (a) => {
     const m = db.tables.medications.find((x) => x.id === a.p_med) as unknown as Medication | undefined
     if (!m) return ok(null)
-    const d: DoseEvent = { id: crypto.randomUUID(), user_id: m.user_id, medication_id: m.id, scheduled_for: now(), status: 'taken', acted_at: now(), notified_at: null, snoozed_until: null }
+    const prior = a.p_id ? db.tables.dose_events.find((x) => x.id === a.p_id && x.user_id === uid()) : undefined
+    if (prior) return ok({ ...prior })
+    const t = clampClientTime(a.p_at)
+    const d: DoseEvent = { id: (a.p_id as string) ?? crypto.randomUUID(), user_id: m.user_id, medication_id: m.id, scheduled_for: t, status: 'taken', acted_at: t, notified_at: null, snoozed_until: null }
     db.tables.dose_events.push({ ...d })
     changeStock(m.id, -m.units_per_dose)
     return ok(d)
+  },
+  set_paused: (a) => {
+    const m = db.tables.medications.find((x) => x.id === a.p_med && x.user_id === uid())
+    if (!m) return fail('medication not found')
+    m.paused = a.p_paused
+    regenerate()
+    return ok(null)
+  },
+  update_profile: (a) => {
+    const p = profile()
+    if (!p) return fail('profile not found')
+    const patch = a.p_patch as Row
+    const beforeTz = p.time_zone
+    for (const k of ['nickname', 'time_zone', 'snooze_minutes', 'suggestions_enabled'] as const) {
+      if (k in patch) Object.assign(p, { [k]: patch[k] })
+    }
+    if (p.time_zone !== beforeTz) regenerate()
+    return ok({ ...p })
   },
 }
 
@@ -227,6 +279,7 @@ class Query implements PromiseLike<Result> {
     return this
   }
   private run(): Result {
+    if (offline) return offlineResult()
     if (!uid()) return fail('Not signed in')
     const match = (r: Row) => this.filters.every((f) => f(r))
     let rows = db.tables[this.table].filter(match)
@@ -258,6 +311,7 @@ class Query implements PromiseLike<Result> {
 export const supabase = {
   from: (table: keyof Tables) => new Query(table),
   rpc: async (name: string, args: Row = {}): Promise<Result> => {
+    if (offline) return offlineResult()
     if (!uid()) return fail('Not signed in')
     const fn = rpcs[name]
     if (!fn) return fail(`mock: rpc ${name} not implemented`)
