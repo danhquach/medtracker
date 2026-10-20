@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   listDoses: vi.fn(),
   closeStale: vi.fn(() => Promise.resolve()),
   closeOne: vi.fn(() => Promise.resolve()),
+  snoozeDose: vi.fn((id: string, _minutes: number) => Promise.resolve<unknown>({ id })),
+  online: true,
 }))
 
 const med = {
@@ -30,7 +32,16 @@ vi.mock('../../data/meds', () => ({
   listSchedules: () => Promise.resolve([sched]),
 }))
 vi.mock('../../push/closeStale', () => ({ closeStaleNotifications: api.closeStale, closeDoseNotification: api.closeOne }))
-vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus, STALE_DOSE: 'stale dose' }))
+vi.mock('../../data/doses', () => ({
+  listDoses: api.listDoses,
+  setDoseStatus: api.setDoseStatus,
+  snoozeDose: api.snoozeDose,
+  SNOOZE_MINUTES: [5, 10, 15, 30, 60],
+  STALE_DOSE: 'stale dose',
+}))
+vi.mock('../../data/offline/sync', () => ({
+  subscribe: (fn: (s: { online: boolean }) => void) => (fn({ online: api.online }), () => {}),
+}))
 
 const defaultDoses = () =>
   Promise.resolve([
@@ -40,8 +51,11 @@ const defaultDoses = () =>
   ])
 
 beforeEach(() => {
-  api.profile = { profile: { time_zone: 'America/Toronto' }, error: null, retry: vi.fn() }
+  api.profile = { profile: { time_zone: 'America/Toronto', snooze_minutes: 10 }, error: null, retry: vi.fn() }
   api.guest = false
+  api.online = true
+  api.snoozeDose.mockReset()
+  api.snoozeDose.mockImplementation((id) => Promise.resolve({ id }))
   api.meds = [med]
   api.setDoseStatus.mockReset()
   api.setDoseStatus.mockImplementation((id) => Promise.resolve({ id }))
@@ -209,7 +223,111 @@ describe('Today', () => {
     expect(skip.className).toContain('quiet')
     expect(taken.parentElement).toBe(skip.parentElement)
     expect(taken.parentElement!.className).toContain('dose-actions')
-    expect(skip.nextElementSibling).toBe(taken) // Taken last, at the row's edge
+    expect(taken.parentElement!.firstElementChild).toBe(skip) // Skip first, Snooze between
+    expect(taken.parentElement!.lastElementChild).toBe(taken) // Taken last, at the row's edge
+    expect(taken.parentElement!.previousElementSibling!.className).toBe('dose-info') // actions sit under the name
+  })
+
+  describe('Snooze', () => {
+    const picker = () => screen.getByRole('group', { name: /^Snooze Aspirin 81 mg for/ })
+
+    it('opens a 5/10/15/30/60 min picker with the Settings length marked and focused', async () => {
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin/ }))[0]
+      expect(btn.className).toContain('quiet')
+      expect(btn.getAttribute('aria-expanded')).toBe('false')
+      act(() => btn.click())
+      expect(btn.getAttribute('aria-expanded')).toBe('true')
+      const lengths = [...picker().querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))
+      expect(lengths).toEqual(['5 minutes', '10 minutes', '15 minutes', '30 minutes', '60 minutes'])
+      const preset = screen.getByRole('button', { name: '10 minutes' })
+      expect(preset.className).toContain('is-preset')
+      expect(document.activeElement).toBe(preset)
+      expect(api.snoozeDose).not.toHaveBeenCalled() // opening alone changes nothing
+    })
+
+    it('picking a length snoozes that dose, shows when it reminds again, and closes its notification', async () => {
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin/ }))[0]
+      act(() => btn.click())
+      act(() => screen.getByRole('button', { name: '30 minutes' }).click())
+      expect(screen.queryByRole('group', { name: /^Snooze Aspirin/ })).toBeNull()
+      expect(await screen.findByText(/^Snoozed · reminds /)).toBeTruthy()
+      await waitFor(() => expect(api.snoozeDose).toHaveBeenCalledWith('d1', 30))
+      await waitFor(() => expect(api.closeOne).toHaveBeenCalledWith('d1'))
+      expect(api.setDoseStatus).not.toHaveBeenCalled()
+    })
+
+    it('tapping Snooze again or Escape closes the picker without snoozing', async () => {
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin/ }))[0]
+      act(() => btn.click())
+      act(() => btn.click())
+      expect(screen.queryByRole('group', { name: /^Snooze Aspirin/ })).toBeNull()
+      act(() => btn.click())
+      fireEvent.keyDown(screen.getByRole('button', { name: '10 minutes' }), { key: 'Escape' })
+      expect(screen.queryByRole('group', { name: /^Snooze Aspirin/ })).toBeNull()
+      expect(api.snoozeDose).not.toHaveBeenCalled()
+    })
+
+    it('a failed snooze shows the error and reloads the real state', async () => {
+      api.snoozeDose.mockImplementation(() => Promise.reject(new Error('invalid snooze minutes')))
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin/ }))[0]
+      act(() => btn.click())
+      act(() => screen.getByRole('button', { name: '5 minutes' }).click())
+      expect((await screen.findByRole('alert')).textContent).toContain('invalid snooze minutes')
+      await waitFor(() => expect(screen.queryByText(/^Snoozed · reminds /)).toBeNull())
+      expect(api.closeOne).not.toHaveBeenCalled()
+    })
+
+    it('a dose no longer pending on the server says so', async () => {
+      api.snoozeDose.mockImplementation(() => Promise.resolve(null))
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin/ }))[0]
+      act(() => btn.click())
+      act(() => screen.getByRole('button', { name: '10 minutes' }).click())
+      expect((await screen.findByRole('alert')).textContent).toBe('stale dose')
+    })
+
+    it('offline: Snooze is disabled and says it needs a connection', async () => {
+      api.online = false
+      renderToday()
+      const btn = (await screen.findAllByRole('button', { name: /^Snooze Aspirin 81 mg \(needs a connection\)/ }))[0]
+      expect((btn as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('guests get no Snooze (no reminders to bring back)', async () => {
+      api.guest = true
+      renderToday()
+      await screen.findAllByRole('button', { name: /^Taken Aspirin/ })
+      expect(screen.queryByRole('button', { name: /^Snooze/ })).toBeNull()
+    })
+
+    it('only due pending doses offer Snooze: not missed, not later today, not done', async () => {
+      const later = new Date(Date.now() + 3_600_000).toISOString()
+      api.listDoses.mockImplementation(() =>
+        Promise.resolve([
+          dose('m', '2026-10-19T13:00:00Z', 'missed'),
+          dose('f', later, 'pending'),
+          dose('t', '2026-10-19T17:00:00Z', 'taken', '2026-10-19T17:02:00Z'),
+        ]),
+      )
+      renderToday()
+      expect(await screen.findAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2)
+      expect(screen.queryByRole('button', { name: /^Snooze/ })).toBeNull()
+    })
+
+    it('an active snooze shows its reminder time; an expired one does not', async () => {
+      api.listDoses.mockImplementation(() =>
+        Promise.resolve([
+          { ...dose('a', '2026-10-19T13:00:00Z', 'pending'), snoozed_until: new Date(Date.now() + 600_000).toISOString() },
+          { ...dose('b', '2026-10-19T13:00:00Z', 'pending'), snoozed_until: new Date(Date.now() - 600_000).toISOString() },
+        ]),
+      )
+      renderToday()
+      expect(await screen.findAllByText(/^Snoozed · reminds /)).toHaveLength(1)
+    })
   })
 
   it('a wrong tap can be undone on Today, putting the dose back to due', async () => {

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
+import { SNOOZE_MINUTES } from '../../data/doses'
+import type { DoseEvent, DoseStatus, Medication, Profile } from '../../lib/types'
 import { timeLabel } from './dayRange'
 
 const medLabel = (med: Medication | undefined) =>
@@ -22,13 +24,17 @@ export default function DoseRow({
   med,
   tz,
   onSet,
+  snooze,
 }: {
   dose: DoseEvent
   med: Medication | undefined
   tz: string
   onSet: (status: DoseStatus) => void
+  /** Absent: no Snooze (guest, or not a due pending dose). */
+  snooze?: { now: number; online: boolean; preset: Profile['snooze_minutes']; onSnooze: (minutes: Profile['snooze_minutes']) => void }
 }) {
   const label = medLabel(med)
+  const [picking, setPicking] = useState(false)
 
   // Done for the day: stays in place, dimmed. Undo puts a wrong tap back to due.
   if (dose.status === 'taken' || dose.status === 'skipped') {
@@ -51,23 +57,69 @@ export default function DoseRow({
     )
   }
 
+  const canSnooze = !!snooze && dose.status === 'pending' && Date.parse(dose.scheduled_for) <= snooze.now
+  const snoozedUntil = snooze && dose.snoozed_until && Date.parse(dose.snoozed_until) > snooze.now ? dose.snoozed_until : null
+
   return (
-    <li className="dose-row">
-      <div>
+    <li className="dose-row is-due">
+      <div className="dose-info">
         <Link className="dose-name" to={`/history/${dose.medication_id}`}>
           <strong>{label}</strong>
         </Link>
         {dose.status === 'missed' && <span className="status status-missed">Missed</span>}
+        {dose.status === 'pending' && snoozedUntil && (
+          <span className="status status-pending">Snoozed · reminds you at {timeLabel(snoozedUntil, tz)}</span>
+        )}
       </div>
-      {/* Wide gap and a quiet Skip so a thumb can't land on the wrong one. */}
+      {/* Quiet Skip at one edge, Taken at the other, so a thumb can't land on the wrong one. Snooze only opens a picker. */}
       <div className="dose-actions">
         <button className="quiet" onClick={() => onSet('skipped')} aria-label={`Skip ${label}`}>
           Skip
         </button>
+        {canSnooze && (
+          <button
+            className="quiet"
+            disabled={!snooze.online}
+            onClick={() => setPicking((p) => !p)}
+            aria-expanded={picking}
+            aria-label={snooze.online ? `Snooze ${label}` : `Snooze ${label} (needs a connection)`}
+            title={snooze.online ? undefined : 'Needs a connection'}
+          >
+            Snooze
+          </button>
+        )}
         <button className="primary" onClick={() => onSet('taken')} aria-label={`Taken ${label}`}>
           Taken
         </button>
       </div>
+      {canSnooze && picking && snooze.online && (
+        <div
+          className="snooze-picker"
+          role="group"
+          aria-label={`Snooze ${label} for`}
+          onKeyDown={(e) => e.key === 'Escape' && setPicking(false)}
+        >
+          <span className="snooze-label" aria-hidden="true">
+            Remind me again in
+          </span>
+          <div className="segmented">
+            {SNOOZE_MINUTES.map((m) => (
+              <button
+                key={m}
+                className={m === snooze.preset ? 'is-preset' : undefined}
+                autoFocus={m === snooze.preset}
+                aria-label={`${m} minutes`}
+                onClick={() => {
+                  setPicking(false)
+                  snooze.onSnooze(m)
+                }}
+              >
+                {m} min
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </li>
   )
 }
