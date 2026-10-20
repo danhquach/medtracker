@@ -13,12 +13,13 @@ export default function EmailLinkNotice({ email, guest = false }: { email?: stri
       Dismiss
     </button>
   )
+  // Only with a signed-in email: the link's hash alone is not proof (anyone can craft one).
   if (link === 'verified')
-    return (
+    return email ? (
       <p role="status" className="notice">
-        Email verified.{email && ` You’re signed in as ${email}.`} {dismiss}
+        Email verified. You’re signed in as {email}. {dismiss}
       </p>
-    )
+    ) : null
   const next = guest
     ? 'To get a new link, add your email again in Settings.'
     : email

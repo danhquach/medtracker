@@ -42,6 +42,12 @@ describe('EmailLinkNotice', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('a verified link without a signed-in email (crafted link) → nothing', () => {
+    landing.url = 'http://localhost/today#access_token=junk&type=signup'
+    const { container } = render(<EmailLinkNotice />)
+    expect(container.innerHTML).toBe('')
+  })
+
   it('shows once per link: a later screen does not repeat it', () => {
     landing.url = 'http://localhost/today#access_token=t&type=signup'
     const first = render(<EmailLinkNotice email="a@example.com" />)
