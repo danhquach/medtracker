@@ -53,7 +53,11 @@ async function revokeOtherSessions(): Promise<void> {
 
 /** Returns true when a session exists (confirmations off); false when email confirmation is pending. */
 export async function signUp(email: string, password: string): Promise<boolean> {
-  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { password_set: true } } })
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { password_set: true }, emailRedirectTo: appUrl('today') },
+  })
   if (error) throw error
   if (!data.session) return false
   await markPasswordSet()
