@@ -471,17 +471,101 @@ input[role='switch']:disabled {
   text-decoration: none;
 }
 
-/* Taken and Skip: full-size targets kept well apart (MT-37). */
+/* A due dose: name and status on top, actions in one aligned row under it, picker below that. */
+.dose-row.is-due {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.dose-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dose-info .status {
+  margin-left: 0;
+}
+
+.dose-info .dose-name {
+  font-size: 1.15rem;
+}
+
+/* Skip first, Taken last with Snooze between them (MT-37); Taken is the widest. */
 .dose-actions {
   display: flex;
-  gap: 24px;
-  flex-shrink: 0;
+  gap: 12px;
+}
+
+/* Compact, equal-sized controls left-aligned under the name, so the name leads the card. */
+.dose-row.is-due .dose-actions button {
+  min-width: 80px;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 0.95rem;
+}
+
+.dose-row.is-due .dose-actions button.primary {
+  min-width: 96px;
+}
+
+.snooze-picker {
+  max-width: 340px;
+}
+
+.dose-actions button[aria-expanded='true'] {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }
 
 .dose-actions button,
 .dose-row .quiet {
   min-width: 48px;
   min-height: 48px;
+}
+
+/* Snooze lengths: one compact segmented control under the actions. */
+.snooze-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider);
+}
+
+.snooze-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented .is-preset {
+  color: var(--accent-text);
+  background: var(--accent-muted);
+  font-weight: 600;
 }
 
 /* Secondary choice: no fill, muted text, so it can't be mistaken for Taken. */

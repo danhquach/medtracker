@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Empty, Loading } from '../../components/states'
 import { avgDosesPerDay, daysLeft, refillState } from '../../../supabase/functions/_shared/refill'
-import { listDoses, setDoseStatus, STALE_DOSE } from '../../data/doses'
+import { listDoses, setDoseStatus, snoozeDose, STALE_DOSE } from '../../data/doses'
 import { listMeds, listSchedules } from '../../data/meds'
-import type { DoseEvent, DoseStatus, Medication, Schedule } from '../../lib/types'
+import { subscribe } from '../../data/offline/sync'
+import type { DoseEvent, DoseStatus, Medication, Profile, Schedule } from '../../lib/types'
 import { isGuest } from '../auth/auth'
 import LoadError from '../auth/LoadError'
 import { useProfileState } from '../auth/useProfile'
@@ -35,6 +36,8 @@ export default function Today() {
   const [doses, setDoses] = useState<DoseEvent[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [online, setOnline] = useState(true)
+  useEffect(() => subscribe((s) => setOnline(s.online)), [])
 
   const latest = useRef({ selected, tz, today })
   const requestId = useRef(0)
@@ -80,6 +83,7 @@ export default function Today() {
         setMeds(m)
         setSchedules(s)
         setDoses(d)
+        setClock(Date.now()) // due / snoozed-until are judged against the time of the last load
         setLoaded(true)
         setError(null)
       },
@@ -110,6 +114,26 @@ export default function Today() {
       if (day && zone) await load(day, zone)
       if (failed) setError(failed) // after the reload, which clears errors
 
+    },
+    [load],
+  )
+
+  // Needs the server (it sends the next reminder), so it is never queued offline.
+  const snooze = useCallback(
+    async (dose: DoseEvent, minutes: Profile['snooze_minutes']) => {
+      requestId.current++
+      const until = new Date(Date.now() + minutes * 60_000).toISOString()
+      setDoses((ds) => ds.map((d) => (d.id === dose.id ? { ...d, snoozed_until: until } : d)))
+      let failed: string | null = null
+      try {
+        if (!(await snoozeDose(dose.id, minutes))) failed = STALE_DOSE
+        else void closeDoseNotification(dose.id) // it comes back when the snooze ends
+      } catch (e) {
+        failed = e instanceof Error ? e.message : 'Could not snooze dose'
+      }
+      const { selected: day, tz: zone } = latest.current
+      if (day && zone) await load(day, zone)
+      if (failed) setError(failed)
     },
     [load],
   )
@@ -146,6 +170,7 @@ export default function Today() {
     refreshNotifications()
   }
 
+  const guest = isGuest(user)
   const medById = new Map(meds.map((m) => [m.id, m]))
   const groups = new Map<string, DoseEvent[]>()
   for (const d of doses) {
@@ -198,13 +223,24 @@ export default function Today() {
           <h3>{time}</h3>
           <ul className="dose-list">
             {rows.map((d) => (
-              <DoseRow key={d.id} dose={d} med={medById.get(d.medication_id)} tz={tz!} onSet={(s) => act(d, s)} />
+              <DoseRow
+                key={d.id}
+                dose={d}
+                med={medById.get(d.medication_id)}
+                tz={tz!}
+                onSet={(s) => act(d, s)}
+                snooze={
+                  guest || !profile
+                    ? undefined
+                    : { now: clock, online, preset: profile.snooze_minutes, onSnooze: (m) => void snooze(d, m) }
+                }
+              />
             ))}
           </ul>
         </section>
       ))}
       <NeedsAttention
-        guest={isGuest(user)}
+        guest={guest}
         notifications={notifications}
         enableError={enableError}
         onTurnOn={turnOn}

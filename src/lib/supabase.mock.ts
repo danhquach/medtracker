@@ -173,6 +173,14 @@ const rpcs: Record<string, (a: Row) => Result> = {
     else if (d.status === 'taken') changeStock(d.medication_id, units)
     d.status = a.p_status as DoseEvent['status']
     d.acted_at = d.status === 'pending' ? null : clampClientTime(a.p_acted_at)
+    d.snoozed_until = null
+    return ok(d)
+  },
+  snooze_dose: (a) => {
+    if (![5, 10, 15, 30, 60].includes(a.p_minutes as number)) return fail(`invalid snooze minutes: ${a.p_minutes}`)
+    const d = db.tables.dose_events.find((x) => x.id === a.p_dose && x.user_id === uid() && x.status === 'pending') as unknown as DoseEvent | undefined
+    if (!d) return ok(null)
+    d.snoozed_until = new Date(Date.now() + (a.p_minutes as number) * 60_000).toISOString()
     return ok(d)
   },
   set_dose_status_at: (a) => {

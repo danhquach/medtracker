@@ -55,6 +55,15 @@ export async function setDoseStatus(id: string, status: DoseStatus): Promise<Dos
   }
 }
 
+export const SNOOZE_MINUTES = [5, 10, 15, 30, 60] as const
+
+/** Online only: the reminder is re-sent by the server when the snooze ends. Null if the dose is no longer pending. */
+export async function snoozeDose(id: string, minutes: (typeof SNOOZE_MINUTES)[number]): Promise<DoseEvent | null> {
+  const { data, error } = await supabase.rpc('snooze_dose', { p_dose: id, p_minutes: minutes })
+  if (error) throw error
+  return rowOrNull(data as DoseEvent | null)
+}
+
 export async function logPrnDose(medId: string): Promise<DoseEvent | null> {
   const doseId = crypto.randomUUID()
   return submit({ ...opMeta(), kind: 'prn', medId, doseId }, (c) => c.doses.find((d) => d.id === doseId) ?? null)
