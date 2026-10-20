@@ -749,6 +749,10 @@ details.more > summary {
   border-radius: 8px;
 }
 
+.notice-error {
+  border-left-color: var(--danger);
+}
+
 /* Stays in the tree while empty so screen readers announce the next message. */
 .notice:empty {
   margin: 0;

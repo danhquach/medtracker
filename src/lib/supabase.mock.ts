@@ -286,6 +286,8 @@ class Query implements PromiseLike<Result> {
   }
 }
 
+export const landingUrl = typeof location === 'undefined' ? '' : location.href
+
 export const supabase = {
   from: (table: keyof Tables) => new Query(table),
   rpc: async (name: string, args: Row = {}): Promise<Result> => {
