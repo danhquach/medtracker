@@ -108,7 +108,7 @@ export async function signOut(): Promise<void> {
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   } finally {
-    if (userId) await forgetOfflineData(userId)
+    await forgetOfflineData(userId) // unresolved id: falls back to the store that is open
   }
 }
 

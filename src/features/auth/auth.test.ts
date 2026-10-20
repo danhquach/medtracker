@@ -70,6 +70,13 @@ describe('signOut', () => {
     // Session cleared first, so other tabs can't reopen the store between the wipe and sign-out.
     expect(order).toEqual(['remove', 'signOut', 'reset:guest'])
   })
+  it('wipes offline data even when the user id cannot be resolved', async () => {
+    sb.getSession.mockResolvedValueOnce({ data: { session: null } } as never)
+    sb.signOut.mockResolvedValue({ error: null })
+    offline.reset.mockClear()
+    await signOut()
+    expect(offline.reset).toHaveBeenCalledWith(undefined)
+  })
   it('still signs out when the offline reset fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     offline.reset.mockRejectedValueOnce(new Error('idb'))
