@@ -75,8 +75,15 @@ to Supabase.
   on two devices in the same offline window. Specifics:
   - Dose status changes are idempotent: `set_dose_status` returns early on
     taken→taken, so stock isn't decremented twice (verified in 0003).
-  - `save_med` replays the whole med + schedules payload; the later save
-    wins.
+  - `save_med` replays the whole med + schedules payload; the save that
+    *reaches the server* last wins, with no `updated_at` check. So an edit
+    made offline on device A and synced late overwrites a newer edit made
+    online on device B in the meantime, silently. Accepted for a
+    single-owner app; revisit (compare `updated_at`, surface a conflict) if
+    the app ever gets shared accounts or caregivers.
+  - Server errors (5xx, 429) and lost connections keep the item queued for
+    the next sync; only rejections (4xx, constraint errors, a dose time that
+    no longer exists) mark it failed.
   - Deleting a med that the other device edited: delete wins. Editing a med
     already deleted on the server: the queued item fails and is surfaced
     (goal 4), not retried forever.
