@@ -18,13 +18,19 @@ function localMidnightUtc(date: string, tz: string): number {
   return localWallTimeUtc(date, '00:00', tz)
 }
 
-/** UTC ms of a local wall-clock time ('HH:MM[:SS]') on a local date in tz, like SQL `(date + time) at time zone tz`. */
+/**
+ * UTC ms of a local wall-clock time ('HH:MM[:SS]') on a local date in tz, exactly as SQL
+ * `(date + time) at time zone tz` (see 0013): a time skipped by a spring-forward gap moves forward
+ * by the gap; a time repeated by a fall-back fold is the later one. Both are the later candidate.
+ */
 export function localWallTimeUtc(date: string, time: string, tz: string): number {
   const [y, m, d] = date.split('-').map(Number)
   const [h, mi, sec = 0] = time.split(':').map(Number)
-  const guess = Date.UTC(y, m - 1, d, h, mi, sec)
-  const first = guess - offsetMs(guess, tz)
-  return guess - offsetMs(first, tz)
+  const wall = Date.UTC(y, m - 1, d, h, mi, sec)
+  // Candidates from the offsets in force a day either side; a real one maps back to the same wall time.
+  const candidates = [wall - 86_400_000, wall + 86_400_000].map((t) => wall - offsetMs(t, tz))
+  const real = candidates.filter((c) => wall - offsetMs(c, tz) === c)
+  return Math.max(...(real.length ? real : candidates))
 }
 
 export function addDays(date: string, n: number): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayParam, dayTitle, localDayRange } from './dayRange'
+import { dayParam, dayTitle, localDayRange, localWallTimeUtc } from './dayRange'
 
 const iso = (s: string) => new Date(s).toISOString()
 const hours = (r: { from: string; to: string }) => (Date.parse(r.to) - Date.parse(r.from)) / 3_600_000
@@ -23,6 +23,30 @@ describe('localDayRange', () => {
     const tokyo = localDayRange('2026-10-19', 'Asia/Tokyo')
     expect(tokyo).toEqual({ from: iso('2026-10-18T15:00:00Z'), to: iso('2026-10-19T15:00:00Z') })
     expect(tokyo).not.toEqual(localDayRange('2026-10-19', 'UTC'))
+  })
+})
+
+// Expected values are what Postgres returns for `(date + time) at time zone tz` (see 0013).
+describe('localWallTimeUtc across daylight saving', () => {
+  const at = (date: string, time: string, tz = 'America/Toronto') => new Date(localWallTimeUtc(date, time, tz)).toISOString()
+  it('a time skipped by spring forward moves forward by the gap (02:30 → 03:30 EDT)', () => {
+    expect(at('2027-03-14', '02:30')).toBe(iso('2027-03-14T07:30:00Z'))
+  })
+  it('02:00 and 03:00 on spring-forward day land on the same instant', () => {
+    expect(at('2027-03-14', '02:00')).toBe(iso('2027-03-14T07:00:00Z'))
+    expect(at('2027-03-14', '03:00')).toBe(iso('2027-03-14T07:00:00Z'))
+  })
+  it('a time repeated by fall back is the later one (01:30 EST)', () => {
+    expect(at('2027-11-07', '01:30')).toBe(iso('2027-11-07T06:30:00Z'))
+  })
+  it('ordinary times on transition days use that moment’s offset', () => {
+    expect(at('2027-03-14', '01:59')).toBe(iso('2027-03-14T06:59:00Z'))
+    expect(at('2027-03-14', '10:00')).toBe(iso('2027-03-14T14:00:00Z'))
+    expect(at('2027-11-07', '00:30')).toBe(iso('2027-11-07T04:30:00Z'))
+    expect(at('2027-11-07', '10:00')).toBe(iso('2027-11-07T15:00:00Z'))
+  })
+  it('a skipped midnight (America/Santiago) is 01:00', () => {
+    expect(at('2026-09-06', '00:00', 'America/Santiago')).toBe(iso('2026-09-06T04:00:00Z'))
   })
 })
 

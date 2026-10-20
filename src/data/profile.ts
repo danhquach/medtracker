@@ -45,33 +45,13 @@ export async function markPasswordSet(): Promise<void> {
   if (error) throw error
 }
 
-const tzKey = (userId: string) => `tzDetected:${userId}`
-
-function isTimeZoneMarked(userId: string): boolean {
-  try {
-    return localStorage.getItem(tzKey(userId)) !== null
-  } catch {
-    return false
-  }
-}
-
-/** Settings calls this when the user saves a zone, so auto-detect never overrides it. */
-export function markTimeZoneChosen(userId: string): void {
-  try {
-    localStorage.setItem(tzKey(userId), '1')
-  } catch {
-    // storage unavailable
-  }
-}
-
-/** Once per user per device: if the zone is still the default, adopt the browser's. */
+/**
+ * Until the account has a chosen zone, adopt this device's (saving marks it chosen, server-side, so
+ * no other device overrides it). Unknown (a profile cached before 0013) counts as chosen.
+ */
 export async function detectTimeZone(): Promise<void> {
-  const id = await currentUserId()
-  if (isTimeZoneMarked(id)) return
   const profile = await getProfile()
-  if (profile.time_zone === DEFAULT_TIME_ZONE) {
-    const browser = Intl.DateTimeFormat().resolvedOptions().timeZone
-    if (browser && browser !== DEFAULT_TIME_ZONE) await updateProfile({ time_zone: browser })
-  }
-  markTimeZoneChosen(id)
+  if (profile.time_zone_chosen !== false) return
+  const browser = Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (browser) await updateProfile({ time_zone: browser })
 }

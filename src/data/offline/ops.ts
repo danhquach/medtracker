@@ -99,9 +99,18 @@ export function applyLocal(cache: Cache, op: Op, nowMs: number): Cache {
     case 'addStock':
       c.meds = c.meds.map((m) => (m.id === op.medId ? { ...m, stock: (m.stock ?? 0) + op.qty } : m))
       return c
-    case 'updateProfile':
-      c.profile = c.profile && { ...c.profile, ...op.patch }
+    case 'updateProfile': {
+      const beforeTz = c.profile?.time_zone
+      c.profile = c.profile && { ...c.profile, ...op.patch, time_zone_chosen: c.profile.time_zone_chosen || 'time_zone' in op.patch }
+      // As regenerate_user_doses: the old zone's future doses go, the new zone's come.
+      if (c.profile && c.profile.time_zone !== beforeTz) {
+        for (const m of c.meds) {
+          c.doses = dropRegenerable(c.doses, m.id, nowMs)
+          c.doses = regenerate(c, m.id, nowMs)
+        }
+      }
       return c
+    }
   }
 }
 

@@ -15,7 +15,6 @@ const m = vi.hoisted(() => ({
   session: { user: null as unknown },
   getProfile: vi.fn(),
   updateProfile: vi.fn(),
-  markTimeZoneChosen: vi.fn(),
   signOut: vi.fn(() => Promise.resolve()),
   unsynced: vi.fn(() => Promise.resolve(0)),
   invoke: vi.fn(),
@@ -31,7 +30,6 @@ vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user
 vi.mock('../../data/profile', () => ({
   getProfile: m.getProfile,
   updateProfile: m.updateProfile,
-  markTimeZoneChosen: m.markTimeZoneChosen,
 }))
 vi.mock('../../data/meds', () => ({ listMeds: () => Promise.resolve([]), listSchedules: () => Promise.resolve([]) }))
 vi.mock('../auth/auth', async (orig) => ({
@@ -78,19 +76,17 @@ const loaded = async () => {
 }
 
 describe('Settings', () => {
-  it('saves the time zone and marks it as chosen', async () => {
+  it('saves the time zone', async () => {
     await loaded()
     fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
     await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ time_zone: 'Europe/London' }))
-    await waitFor(() => expect(m.markTimeZoneChosen).toHaveBeenCalledWith('u1'))
   })
 
-  it('does not mark the zone chosen when the save fails', async () => {
+  it('shows why a time zone save failed', async () => {
     m.updateProfile.mockRejectedValueOnce(new Error('bad zone'))
     await loaded()
     fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
     expect((await screen.findByRole('alert')).textContent).toContain('bad zone')
-    expect(m.markTimeZoneChosen).not.toHaveBeenCalled()
   })
 
   it('saves snooze length, suggestions toggle and nickname', async () => {

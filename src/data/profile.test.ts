@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const db = vi.hoisted(() => ({
-  profile: { user_id: 'u1', time_zone: 'America/Toronto' },
+  profile: { user_id: 'u1', time_zone: 'America/Toronto', time_zone_chosen: false as boolean },
   update: vi.fn(),
   rpc: vi.fn(() => Promise.resolve({ error: null })),
 }))
@@ -26,13 +26,8 @@ vi.mock('./offline/sync', () => ({
 
 import { detectTimeZone } from './profile'
 
-let store: Map<string, string>
 beforeEach(() => {
-  store = new Map()
-  vi.stubGlobal('localStorage', {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-  })
+  db.profile = { user_id: 'u1', time_zone: 'America/Toronto', time_zone_chosen: false }
   db.update.mockClear()
   db.rpc.mockClear()
   vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
@@ -42,19 +37,17 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('detectTimeZone', () => {
-  it('marker present → no update', async () => {
-    store.set('tzDetected:u1', '1')
+  it('zone not chosen yet → adopts the device zone', async () => {
+    await detectTimeZone()
+    expect(db.update).toHaveBeenCalledWith({ time_zone: 'Asia/Tokyo' })
+  })
+  it('zone chosen on another device → leaves it, even when it is the default', async () => {
+    db.profile.time_zone_chosen = true
     await detectTimeZone()
     expect(db.update).not.toHaveBeenCalled()
   })
-  it('marker absent + default zone → updates, regenerates, sets marker', async () => {
-    await detectTimeZone()
-    expect(db.update).toHaveBeenCalledWith({ time_zone: 'Asia/Tokyo' })
-    expect(store.get('tzDetected:u1')).toBe('1')
-  })
-  it('does not run again after the marker is set', async () => {
-    await detectTimeZone()
-    db.update.mockClear()
+  it('profile without the flag (cached before 0013) → leaves the zone', async () => {
+    db.profile = { user_id: 'u1', time_zone: 'America/Toronto' } as typeof db.profile
     await detectTimeZone()
     expect(db.update).not.toHaveBeenCalled()
   })

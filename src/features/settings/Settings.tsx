@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { listMeds, listSchedules } from '../../data/meds'
-import { getProfile, markTimeZoneChosen, updateProfile, type ProfilePatch } from '../../data/profile'
+import { getProfile, updateProfile, type ProfilePatch } from '../../data/profile'
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 import { useGoBack } from '../../lib/useGoBack'
@@ -89,7 +89,7 @@ export default function Settings() {
   }, [loadProfile])
 
   // Every setting saves on change. Only the most recent save may write state; on failure, show what the server actually holds.
-  async function save(patch: ProfilePatch, after?: () => void) {
+  async function save(patch: ProfilePatch) {
     setError(null)
     setSaved(null)
     const seq = ++saveSeq.current
@@ -100,7 +100,6 @@ export default function Settings() {
         setZoneText(row.time_zone)
         setSaved(Object.keys(patch)[0] as SettingKey)
       }
-      after?.()
     } catch (e) {
       setError(msg(e, 'Could not save'))
       if (seq === saveSeq.current) await loadProfile()
@@ -170,7 +169,7 @@ export default function Settings() {
   }
 
   function saveZone(tz: string) {
-    if (profile && tz !== profile.time_zone) void save({ time_zone: tz }, () => user && markTimeZoneChosen(user.id))
+    if (profile && tz !== profile.time_zone) void save({ time_zone: tz })
   }
 
   async function deleteProfile() {

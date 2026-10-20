@@ -8,6 +8,7 @@ Owner/maintainer reference. New here? Start with the [README](../README.md).
 | [CI and branch rules](#ci-and-branch-rules) | A PR check fails or won't merge |
 | [Deploy](#deploy) | Setting up Supabase or GitHub Pages |
 | [Troubleshooting reminders](#troubleshooting-reminders) | Pushes don't arrive |
+| [Daylight saving](#daylight-saving) | A dose time looks shifted around a clock change |
 | [Known risks](#known-risks) | Planning or debugging odd delays |
 | [Manual device checklist](#manual-device-checklist) | Testing on real phones |
 
@@ -162,6 +163,17 @@ select status_code, content from net._http_response order by created desc limit 
 
 > [!NOTE]
 > Doses more than 12 hours overdue are intentionally not sent.
+
+---
+
+## Daylight saving
+
+Dose times follow the profile's time zone (`0013_time_zones.sql`; the offline client matches it):
+
+- A time skipped when clocks spring forward moves forward by the gap: 02:30 becomes 03:30.
+- A time that happens twice when clocks fall back is the second one, after the change.
+- A med has one dose per instant, so 02:00 and 03:00 on a spring-forward day give one dose that day.
+- Auto-detect adopts a device's zone only until a zone is set; after that, only Settings changes it. Accounts from before 0013 still on the default zone (America/Toronto) count as not set.
 
 ---
 

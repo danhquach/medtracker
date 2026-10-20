@@ -106,6 +106,24 @@ describe('applyLocal', () => {
   it('updateProfile merges the patch', () => {
     expect(applyLocal(cache(), op({ kind: 'updateProfile', patch: { nickname: 'N' } }), NOW).profile).toMatchObject({ nickname: 'N', user_id: 'u1' })
   })
+
+  it('updateProfile with a new zone swaps future doses to it, keeps acted ones, marks the zone chosen', () => {
+    const s: Schedule = { ...daily, id: 's', user_id: 'u1', medication_id: 'm1' }
+    const base = cache({
+      schedules: [s],
+      doses: [
+        dose({ id: 'old', scheduled_for: '2026-10-21T00:00:00.000Z' }), // 20:00 Toronto
+        dose({ id: 'early', scheduled_for: '2026-10-22T00:00:00.000Z', status: 'taken' }),
+      ],
+    })
+    const c = applyLocal(base, op({ kind: 'updateProfile', patch: { time_zone: 'America/Vancouver' } }), NOW)
+    expect(c.profile).toMatchObject({ time_zone: 'America/Vancouver', time_zone_chosen: true })
+    expect(c.doses.map((d) => `${d.id.startsWith('local:') ? 'new' : d.id} ${d.scheduled_for}`)).toEqual([
+      'new 2026-10-21T03:00:00.000Z', // 20:00 Vancouver
+      'early 2026-10-22T00:00:00.000Z',
+      'new 2026-10-22T03:00:00.000Z',
+    ])
+  })
 })
 
 describe('toRpc', () => {
