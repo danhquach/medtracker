@@ -234,6 +234,17 @@ describe('sync engine', () => {
     expect(await outbox()).toEqual([])
   })
 
+  it('resetForSignOut does not wait forever on a hung flush', async () => {
+    rpc.mockImplementation(offline)
+    await sync.submit(addStock(1), stockOf)
+    rpc.mockReset()
+    rpc.mockImplementation(() => new Promise(() => {})) // fetch never settles
+    void sync.flush()
+    await vi.waitFor(() => expect(rpc).toHaveBeenCalled())
+    await Promise.race([sync.resetForSignOut(undefined, 50), new Promise((_, rej) => setTimeout(() => rej(new Error('hung')), 1000))])
+    expect(await outbox()).toEqual([])
+  })
+
   it('resetForSignOut works before anything opened the store', async () => {
     const s = await store.openStore(user.id)
     await s.enqueue(addStock(1))

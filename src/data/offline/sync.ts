@@ -167,15 +167,18 @@ async function run(): Promise<void> {
 
 /** Sends pending ops in order. Concurrent calls share one run; other tabs wait on a lock. */
 export function flush(): Promise<void> {
-  running ??= (async () => {
+  if (running) return running
+  let p: Promise<void> | null = null
+  p = (async () => {
     try {
       const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
       await (locks ? locks.request('medtracker-sync', run) : run())
     } finally {
-      running = null
+      if (running === p) running = null // a run abandoned by sign-out must not clear a newer one
     }
   })()
-  return running
+  running = p
+  return p
 }
 
 /**
@@ -252,11 +255,19 @@ export async function dismissFailed(seq: number): Promise<void> {
   await emit()
 }
 
-/** Forget a user's cache and outbox (default: the signed-in user). Call after sign-out was confirmed. */
-export async function resetForSignOut(forUserId?: string): Promise<void> {
+/**
+ * Forget a user's cache and outbox (default: the signed-in user). Call after sign-out was confirmed.
+ * Waits up to `waitMs` for a running sync; a hung one is abandoned (deleting the database closes it).
+ */
+export async function resetForSignOut(forUserId?: string, waitMs = 5000): Promise<void> {
   resetting = true // first, before any await: no new run or store may start
   try {
-    while (running) await running.catch(() => undefined)
+    if (running) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([running.catch(() => undefined), new Promise<void>((r) => (timer = setTimeout(r, waitMs)))])
+      clearTimeout(timer)
+      running = null
+    }
     let userId: string
     try {
       userId = forUserId ?? current?.userId ?? (await currentUserId())
