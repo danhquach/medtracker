@@ -328,6 +328,40 @@ describe('Today', () => {
       renderToday()
       expect(await screen.findAllByText(/^Snoozed · reminds /)).toHaveLength(1)
     })
+
+    describe('while the screen stays open', () => {
+      // 2026-10-20 10:00 in Toronto
+      beforeEach(() => vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: new Date('2026-10-20T14:00:00Z') }))
+      afterEach(() => vi.useRealTimers())
+
+      it('a dose becoming due gets Snooze and an ended snooze drops its label, without a reload', async () => {
+        api.listDoses.mockImplementation(() =>
+          Promise.resolve([
+            dose('soon', '2026-10-20T14:02:00Z', 'pending'),
+            { ...dose('snoozed', '2026-10-20T13:00:00Z', 'pending'), snoozed_until: '2026-10-20T14:01:00Z' },
+          ]),
+        )
+        renderToday()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+        const loads = api.listDoses.mock.calls.length
+        expect(screen.getAllByRole('button', { name: /^Snooze Aspirin/ })).toHaveLength(1) // only the overdue one
+        expect(screen.getByText(/^Snoozed · reminds /)).toBeTruthy()
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(61_000) // snooze ends
+        })
+        expect(screen.queryByText(/^Snoozed · reminds /)).toBeNull()
+        expect(screen.getAllByRole('button', { name: /^Snooze Aspirin/ })).toHaveLength(1)
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000) // the 10:02 dose is due
+        })
+        expect(screen.getAllByRole('button', { name: /^Snooze Aspirin/ })).toHaveLength(2)
+        expect(api.listDoses.mock.calls.length).toBe(loads)
+      })
+    })
   })
 
   it('a wrong tap can be undone on Today, putting the dose back to due', async () => {

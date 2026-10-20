@@ -73,6 +73,28 @@ export default function Today() {
     return () => clearTimeout(timer)
   }, [tz, rollover])
 
+  // A dose becoming due or a snooze running out changes its row: re-read the clock at the next such
+  // moment, while the page is visible (coming back re-reads it anyway).
+  useEffect(() => {
+    const next = Math.min(
+      ...doses
+        .flatMap((d) => [d.status === 'pending' ? Date.parse(d.scheduled_for) : NaN, Date.parse(d.snoozed_until ?? '')])
+        .filter((t) => t > clock),
+    )
+    if (next === Infinity) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const arm = () => {
+      clearTimeout(timer)
+      timer = document.visibilityState === 'visible' ? setTimeout(rollover, Math.max(0, next - Date.now()) + 100) : undefined
+    }
+    arm()
+    document.addEventListener('visibilitychange', arm)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', arm)
+    }
+  }, [doses, clock, rollover])
+
   // Only the most recent request may write state.
   const load = useCallback((day: string, zone: string) => {
     const id = ++requestId.current
