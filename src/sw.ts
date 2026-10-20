@@ -1,6 +1,7 @@
 // Service worker wiring. Decision logic lives in push/swLogic.ts (unit-tested).
 // Typed minimally: the project compiles with the DOM lib, not WebWorker.
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { handleAction, notificationFromPayload, todayUrl, type NotificationData } from './push/swLogic'
 import type { PushPayload } from '../supabase/functions/_shared/reminderRun'
 
@@ -19,6 +20,8 @@ const sw = self as unknown as SW
 cleanupOutdatedCaches()
 // Must stay a literal `self.__WB_MANIFEST`: workbox injects the precache list there.
 precacheAndRoute((self as unknown as { __WB_MANIFEST: { url: string; revision: string | null }[] }).__WB_MANIFEST)
+// SPA routes (/today, /meds/…) aren't files: serve the cached app shell so a reload works offline.
+registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')))
 
 sw.addEventListener('install', () => void sw.skipWaiting())
 

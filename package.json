@@ -19,7 +19,8 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "7.18.4",
-    "vite-plugin-pwa": "2.0.0"
+    "vite-plugin-pwa": "2.0.0",
+    "workbox-routing": "7.4.1"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
