@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OutboxItem } from '../data/offline/store'
 import type { SyncStatus as Status } from '../data/offline/sync'
-import SyncStatus, { changes } from './SyncStatus'
+import SyncStatus from './SyncStatus'
+import { changes } from './syncCopy'
 
 const m = vi.hoisted(() => ({
   listeners: new Set<(s: unknown) => void>(),

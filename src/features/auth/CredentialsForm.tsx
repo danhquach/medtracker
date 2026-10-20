@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { changes } from '../../components/SyncStatus'
+import { changes } from '../../components/syncCopy'
 import { pendingCount } from '../../data/offline/sync'
 import { createProfile, GUEST_LEFT_BEHIND, signIn, signUp } from './auth'
 

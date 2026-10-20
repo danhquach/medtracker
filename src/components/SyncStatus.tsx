@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Op } from '../data/offline/ops'
 import { dismissFailed, snapshot, subscribe, type SyncStatus as Status } from '../data/offline/sync'
-
-export const changes = (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`
-
-export const unsyncedWarning = (n: number) =>
-  `${changes(n)} ${n === 1 ? "hasn't" : "haven't"} synced and will be lost. Sign out anyway?`
+import { changes } from './syncCopy'
 
 function describe(op: Op): string {
   switch (op.kind) {
