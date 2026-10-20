@@ -19,6 +19,7 @@ let resetting = false
 async function getStore(): Promise<{ userId: string; store: Store }> {
   if (resetting) throw new Error('Signing out')
   const userId = await currentUserId()
+  if (resetting) throw new Error('Signing out')
   if (current?.userId !== userId) {
     if (current) void current.store.then((s) => s.close())
     current = { userId, store: openStore(userId) }
@@ -243,15 +244,15 @@ export async function dismissFailed(seq: number): Promise<void> {
 
 /** Forget the signed-in user's cache and outbox. Call while still signed in, after sign-out was confirmed. */
 export async function resetForSignOut(): Promise<void> {
-  if (running) await running.catch(() => undefined)
-  let userId: string
+  resetting = true // first, before any await: no new run or store may start
   try {
-    userId = current?.userId ?? (await currentUserId())
-  } catch {
-    return
-  }
-  resetting = true
-  try {
+    while (running) await running.catch(() => undefined)
+    let userId: string
+    try {
+      userId = current?.userId ?? (await currentUserId())
+    } catch {
+      return
+    }
     if (current) (await current.store).close()
     current = null
     await deleteStore(userId)

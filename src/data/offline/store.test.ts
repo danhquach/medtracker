@@ -54,6 +54,15 @@ describe('offline store', () => {
     s.close()
   })
 
+  it('deleteStore is not blocked by a connection left open', async () => {
+    const s = await openStore('open')
+    await s.enqueue(op(1))
+    await Promise.race([deleteStore('open'), new Promise((_, rej) => setTimeout(() => rej(new Error('blocked')), 500))])
+    const again = await openStore('open')
+    expect(await again.list()).toEqual([])
+    again.close()
+  })
+
   it('deleteStore removes the database', async () => {
     const s = await openStore('gone')
     await s.enqueue(op(1))

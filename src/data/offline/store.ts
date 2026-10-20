@@ -34,6 +34,7 @@ export async function openStore(userId: string): Promise<Store> {
     open.result.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true })
   }
   const db = await req(open)
+  db.onversionchange = () => db.close() // a sign-out deleting this database must never be blocked
   const tx = (name: 'cache' | 'outbox', mode: IDBTransactionMode = 'readonly') => db.transaction(name, mode).objectStore(name)
   return {
     readCache: async () => ((await req(tx('cache').get('snapshot'))) as Cache | undefined) ?? emptyCache(),
