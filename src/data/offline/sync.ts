@@ -195,8 +195,9 @@ export async function readThrough<T>(
   intoCache: (c: Cache, v: T) => Cache,
 ): Promise<T> {
   let store: Store
+  let userId: string
   try {
-    ;({ store } = await getStore())
+    ;({ store, userId } = await getStore())
   } catch {
     return fetch()
   }
@@ -206,6 +207,7 @@ export async function readThrough<T>(
   }
   try {
     const v = await fetch()
+    if (!(await stillSignedIn(userId))) return v // never cache one user's rows under another
     await store.writeCache(intoCache(await store.readCache(), v))
     if (!status.online) await emit({ online: true })
     return v

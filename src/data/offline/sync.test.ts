@@ -156,6 +156,19 @@ describe('sync engine', () => {
     s.close()
   })
 
+  it('readThrough does not cache rows when the user changed during the fetch', async () => {
+    const first = user.id
+    const meds = await sync.readThrough(
+      () => ((user.id = crypto.randomUUID()), Promise.resolve([med(42)])),
+      (c) => c.meds,
+      (c, v) => ({ ...c, meds: v }),
+    )
+    expect(stockOf({ meds })).toBe(42)
+    const s = await store.openStore(first)
+    expect(stockOf(await s.readCache())).toBe(10)
+    s.close()
+  })
+
   it('readThrough falls back to cache on a network error', async () => {
     const meds = await sync.readThrough(() => Promise.reject(new TypeError('Failed to fetch')), (c) => c.meds, (c, v) => ({ ...c, meds: v }))
     expect(stockOf({ meds })).toBe(10)
