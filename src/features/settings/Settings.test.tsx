@@ -206,10 +206,18 @@ describe('Settings', () => {
     expect(desc(screen.getByRole('switch', { name: /suggestions/i }))).toMatch(/as you type/)
   })
 
-  it('hides the battery tip when the browser cannot receive notifications', async () => {
+  it('shows the Android lock-screen and battery tip', async () => {
+    m.deviceState.state = 'on'
+    await loaded()
+    expect(screen.getByText(/lock screen/)).toBeTruthy()
+    expect(screen.getByText(/Unrestricted/)).toBeTruthy()
+  })
+
+  it('hides the Android tip when the browser cannot receive notifications', async () => {
     m.deviceState.state = 'unsupported'
     await loaded()
     expect(screen.queryByText(/Unrestricted/)).toBeNull()
+    expect(screen.queryByText(/lock screen/)).toBeNull()
   })
 
   it('sends a local test notification', async () => {

@@ -2,7 +2,8 @@
 import { avgDosesPerDay, daysLeft, refillState, type MedLike, type ScheduleLike } from './refill.ts'
 
 export type PushPayload =
-  | { type: 'dose'; tag: string; title: string; body: string; actionToken: string }
+  // scheduledFor: ISO due time, shown as the notification's timestamp.
+  | { type: 'dose'; tag: string; title: string; body: string; actionToken: string; scheduledFor: string }
   | { type: 'refill'; tag: string; title: string; body: string }
 
 export type SendResult = 'ok' | 'gone' | 'error' | 'disallowed'
@@ -128,6 +129,7 @@ export async function runReminders(d: Deps): Promise<RunResult> {
           title: `Time for ${x.med_name}`,
           body: x.strength ? `${x.strength}, due ${when}` : `Due ${when}`,
           actionToken,
+          scheduledFor: x.scheduled_for,
         })
         if (results.includes('ok')) r.sent++
         // Transient failure only: nothing delivered and at least one attempt hit a retryable error.

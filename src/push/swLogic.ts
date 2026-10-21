@@ -13,6 +13,8 @@ export type NotificationSpec = {
     badge: string
     requireInteraction?: boolean
     renotify?: boolean
+    timestamp?: number
+    vibrate?: number[]
     actions?: { action: string; title: string }[]
   }
 }
@@ -25,6 +27,9 @@ export type ActionDeps = {
   apikey: string
 }
 
+/** Long-short-long buzz so a dose stands out from other notifications on a phone in a pocket. */
+export const DOSE_VIBRATE = [400, 200, 400]
+
 /** `scope` is the SW registration scope (ends with '/'), so URLs stay correct under a sub-path deploy. */
 export const todayUrl = (scope: string): string => `${scope}today`
 
@@ -35,13 +40,17 @@ export function notificationFromPayload(raw: Partial<PushPayload> | null | undef
   const body = p.body || 'You have a reminder.'
   const base = { body, tag: p.tag ?? 'medtracker', icon: ICON, badge: ICON }
   if (p.type === 'dose') {
+    const at = p.scheduledFor ? Date.parse(p.scheduledFor) : NaN
     return {
       title,
       options: {
         ...base,
         data: { type: 'dose', token: p.actionToken },
-        requireInteraction: false,
+        // Stay on screen until Taken/Snooze/dismiss, rather than auto-hiding where browsers allow it.
+        requireInteraction: true,
         renotify: true,
+        vibrate: DOSE_VIBRATE,
+        ...(Number.isNaN(at) ? {} : { timestamp: at }),
         actions: [
           { action: 'taken', title: 'Taken' },
           { action: 'snooze', title: 'Snooze' },
