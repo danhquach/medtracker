@@ -16,7 +16,8 @@ import { useDeviceNotificationState } from '../notifications/useDeviceNotificati
 import { csvBlob, toCsv } from './exportCsv'
 
 const SNOOZE = [5, 10, 15, 30, 60] as const
-export const BATTERY_TIP = "Reminders late? In Android settings, set Chrome's battery use to Unrestricted."
+export const ANDROID_TIP =
+  "On Android: in Notifications settings, let MedTracker show on the lock screen, and set Chrome's battery use to Unrestricted so reminders aren't late."
 
 // The saved and detected zones are always valid choices, even when the list omits them (e.g. "UTC").
 function timeZones(...known: (string | null)[]): string[] {
@@ -255,7 +256,7 @@ export default function Settings() {
             </Setting>
           )}
         </div>
-        {device.state !== 'unsupported' && <p className="muted settings-note">{BATTERY_TIP}</p>}
+        {device.state !== 'unsupported' && <p className="muted settings-note">{ANDROID_TIP}</p>}
       </section>
 
       <section className="settings-group" aria-labelledby="st-profile">

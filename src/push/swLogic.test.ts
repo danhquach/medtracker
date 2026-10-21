@@ -1,17 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleAction, notificationFromPayload, todayUrl, type ActionDeps } from './swLogic'
+import { DOSE_VIBRATE, handleAction, notificationFromPayload, todayUrl, type ActionDeps } from './swLogic'
 
-const dose = { type: 'dose', tag: 'd1', title: 'Time for X', body: 'Due 8:00', actionToken: 'tok' } as const
+const dose = { type: 'dose', tag: 'd1', title: 'Time for X', body: 'Due 8:00', actionToken: 'tok', scheduledFor: '2026-10-19T14:55:00.000Z' } as const
 const refill = { type: 'refill', tag: 'refill-m1', title: 'X low', body: 'About 3 days left.' } as const
 
 describe('notificationFromPayload', () => {
-  it('dose: tag, actions, renotify, data token', () => {
+  it('dose: tag, actions, renotify, data token, stays until handled', () => {
     const n = notificationFromPayload(dose)
     expect(n.title).toBe('Time for X')
     expect(n.options).toMatchObject({
       body: 'Due 8:00',
       tag: 'd1',
-      requireInteraction: false,
+      requireInteraction: true,
+      timestamp: Date.parse('2026-10-19T14:55:00.000Z'),
+      vibrate: DOSE_VIBRATE,
       renotify: true,
       data: { type: 'dose', token: 'tok' },
       actions: [
@@ -30,9 +32,16 @@ describe('notificationFromPayload', () => {
     expect(m.options.body).toBe('You have a reminder.')
   })
 
-  it('refill: no actions, no token', () => {
+  it('dose without a valid scheduledFor (older server): no timestamp', () => {
+    expect(notificationFromPayload({ ...dose, scheduledFor: undefined } as never).options.timestamp).toBeUndefined()
+    expect(notificationFromPayload({ ...dose, scheduledFor: 'nope' }).options.timestamp).toBeUndefined()
+  })
+
+  it('refill: no actions, no token, no vibrate or requireInteraction', () => {
     const n = notificationFromPayload(refill)
     expect(n.options.actions).toBeUndefined()
+    expect(n.options.vibrate).toBeUndefined()
+    expect(n.options.requireInteraction).toBeUndefined()
     expect(n.options.data).toEqual({ type: 'refill' })
     expect(n.options.tag).toBe('refill-m1')
   })

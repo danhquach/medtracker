@@ -51,7 +51,7 @@ describe('runReminders', () => {
     const r = await runReminders(deps)
     expect(r).toMatchObject({ claimed: 1, sent: 1, pruned: 0, unclaimed: 0 })
     expect(log.unclaimed).toEqual([])
-    expect(log.payloads[0]).toMatchObject({ type: 'dose', title: 'Time for Med', body: expect.stringMatching(/^5 mg, due 10:55\sAM$/) })
+    expect(log.payloads[0]).toMatchObject({ type: 'dose', title: 'Time for Med', body: expect.stringMatching(/^5 mg, due 10:55\sAM$/), scheduledFor: '2026-10-19T14:55:00.000Z' })
   })
   it('all-transient error -> unclaimed', async () => {
     const { deps, log } = mk({ doses: [dose('d1')], results: ['error', 'error'] })
