@@ -193,6 +193,11 @@ input {
   text-align: center;
 }
 
+/* Form actions stack full width, like the welcome menu's buttons. */
+.welcome .row {
+  flex-direction: column;
+}
+
 /* A secondary action that reads as a link but keeps the 44px target. */
 button.link {
   color: var(--accent-text);
