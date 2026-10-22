@@ -13,7 +13,8 @@
     "test": "vitest run --config vitest.config.ts",
     "test:int": "vitest run --config vitest.int.config.ts --passWithNoTests",
     "test:e2e": "playwright test",
-    "android:apk": "npm run build && cap sync android && cd android && ./gradlew assembleDebug"
+    "android:apk": "ANDROID_LIVE=1 cap sync android && cd android && ./gradlew assembleDebug",
+    "android:apk:mock": "vite build --mode mock && cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

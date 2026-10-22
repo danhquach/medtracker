@@ -29,10 +29,15 @@ Reminders need the app on your home screen.
 
 **Android app (sideloaded):** same app, but reminders are scheduled on the phone (exact time, offline, own chime). Needs Android Studio's SDK and JDK 21.
 
+The app loads the live site, so a web change merged to `main` shows up the next time the app is opened or brought back to the front (online). It opens offline once it has been opened online. Rebuild the APK only for native changes: a plugin, permission, notification sound, icon or app name.
+
 ```sh
-npm run android:apk   # android/app/build/outputs/apk/debug/app-debug.apk
+npm run android:apk        # live site (production data)
+npm run android:apk:mock   # bundled, in-browser fake backend: offline device testing
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Both builds share one app ID, so only one is installed at a time. Moving from an older bundled APK to the live one: open the old app online first so pending changes sync, install over it (`adb install -r`, never uninstall), sign in again and turn notifications back on. The old reminders are cleared on first start, so nothing rings twice.
 
 Then turn on notifications in the app. Use the Android app *or* the installed web app on a phone, not both, or each dose rings twice. The phone plans a week ahead and updates when the app opens: open it at least weekly, and note a dose marked on another device still rings on the phone until then.
 
