@@ -3,10 +3,15 @@ name: Update behind PRs
 # The protect-main ruleset requires PR branches to be up to date with main,
 # so auto-merge stalls whenever main moves. This merges main into every open
 # PR that has auto-merge enabled, which reruns CI and lets auto-merge finish.
+# It also runs when auto-merge is turned on, for a PR that fell behind before
+# that. pull_request_target is safe here: no PR code is checked out or run.
 
 on:
   push:
     branches: [main]
+  pull_request_target:
+    branches: [main]
+    types: [auto_merge_enabled]
   workflow_dispatch:
 
 permissions:
