@@ -206,8 +206,8 @@ export default function Settings() {
 
       <ReminderStatus state={device.state} zone={profile?.time_zone ?? null} />
 
-      <section className="settings-group" aria-labelledby="st-notif">
-        <h3 id="st-notif">Reminders</h3>
+      <section className="settings-group" aria-labelledby="st-reminders">
+        <h3 id="st-reminders">Reminders & dose times</h3>
         <div className="settings-card">
           {device.state === 'unsupported' && <p className="muted">This browser cannot receive notifications.</p>}
           {device.state === 'denied' && (
@@ -262,12 +262,79 @@ export default function Settings() {
               </select>
             </Setting>
           )}
+          {profile && (
+            <Setting
+              htmlFor="st-zone"
+              label={
+                <>
+                  Time zone <Saved show={saved === 'time_zone'} />
+                </>
+              }
+              desc="Dose times follow this time zone. Type a city to search, for example Toronto."
+              wide
+            >
+              <input
+                id="st-zone"
+                list="st-zones"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby="st-zone-desc"
+                value={zoneText}
+                onChange={(e) => {
+                  setZoneText(e.target.value)
+                  if (zones.includes(e.target.value)) saveZone(e.target.value)
+                }}
+                onBlur={() => setZoneText(profile.time_zone)}
+              />
+              <datalist id="st-zones">
+                {zones.map((z) => (
+                  <option key={z} value={z} />
+                ))}
+              </datalist>
+              {detectedZone && detectedZone !== profile.time_zone && (
+                <button type="button" onClick={() => saveZone(detectedZone)}>
+                  Use this device's time zone ({detectedZone})
+                </button>
+              )}
+            </Setting>
+          )}
         </div>
         {device.state !== 'unsupported' && <p className="muted settings-note">{isNativeApp() ? APP_TIP : ANDROID_TIP}</p>}
       </section>
 
-      <section className="settings-group" aria-labelledby="st-profile">
-        <h3 id="st-profile">Profile</h3>
+      <section className="settings-group" aria-labelledby="st-meds">
+        <h3 id="st-meds">Medications</h3>
+        <div className="settings-card">
+          {profile && (
+            <Setting
+              htmlFor="st-suggest"
+              label={
+                <>
+                  Medication name suggestions <Saved show={saved === 'suggestions_enabled'} />
+                </>
+              }
+              desc="Suggests names from public drug databases as you type a new med."
+            >
+              <input
+                id="st-suggest"
+                type="checkbox"
+                role="switch"
+                aria-describedby="st-suggest-desc"
+                checked={profile.suggestions_enabled}
+                onChange={(e) => void save({ suggestions_enabled: e.target.checked })}
+              />
+            </Setting>
+          )}
+          <Setting desc="Download your meds and schedules as a spreadsheet file." wide>
+            <button type="button" onClick={() => void exportPlan()}>
+              Export med plan (CSV)
+            </button>
+          </Setting>
+        </div>
+      </section>
+
+      <section className="settings-group" aria-labelledby="st-account">
+        <h3 id="st-account">Account</h3>
         <div className="settings-card">
           <div className="setting">
             <div className="setting-text">
@@ -303,98 +370,25 @@ export default function Settings() {
               </div>
             ))}
           {profile && (
-            <>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  saveNickname()
-                }}
-              >
-                <Setting
-                  htmlFor="st-nickname"
-                  label={
-                    <>
-                      Nickname <Saved show={saved === 'nickname'} />
-                    </>
-                  }
-                  wide
-                >
-                  <input id="st-nickname" value={nickname} maxLength={40} onChange={(e) => setNickname(e.target.value)} onBlur={saveNickname} />
-                </Setting>
-              </form>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveNickname()
+              }}
+            >
               <Setting
-                htmlFor="st-zone"
+                htmlFor="st-nickname"
                 label={
                   <>
-                    Time zone <Saved show={saved === 'time_zone'} />
+                    Nickname <Saved show={saved === 'nickname'} />
                   </>
                 }
-                desc="Dose times follow this time zone. Type a city to search, for example Toronto."
                 wide
               >
-                <input
-                  id="st-zone"
-                  list="st-zones"
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-describedby="st-zone-desc"
-                  value={zoneText}
-                  onChange={(e) => {
-                    setZoneText(e.target.value)
-                    if (zones.includes(e.target.value)) saveZone(e.target.value)
-                  }}
-                  onBlur={() => setZoneText(profile.time_zone)}
-                />
-                <datalist id="st-zones">
-                  {zones.map((z) => (
-                    <option key={z} value={z} />
-                  ))}
-                </datalist>
-                {detectedZone && detectedZone !== profile.time_zone && (
-                  <button type="button" onClick={() => saveZone(detectedZone)}>
-                    Use this device's time zone ({detectedZone})
-                  </button>
-                )}
+                <input id="st-nickname" value={nickname} maxLength={40} onChange={(e) => setNickname(e.target.value)} onBlur={saveNickname} />
               </Setting>
-            </>
+            </form>
           )}
-        </div>
-      </section>
-
-      {profile && (
-        <section className="settings-group" aria-labelledby="st-prefs">
-          <h3 id="st-prefs">Preferences</h3>
-          <div className="settings-card">
-            <Setting
-              htmlFor="st-suggest"
-              label={
-                <>
-                  Medication name suggestions <Saved show={saved === 'suggestions_enabled'} />
-                </>
-              }
-              desc="Suggests names from public drug databases as you type a new med."
-            >
-              <input
-                id="st-suggest"
-                type="checkbox"
-                role="switch"
-                aria-describedby="st-suggest-desc"
-                checked={profile.suggestions_enabled}
-                onChange={(e) => void save({ suggestions_enabled: e.target.checked })}
-              />
-            </Setting>
-          </div>
-        </section>
-      )}
-
-      <section className="settings-group" aria-labelledby="st-data">
-        <h3 id="st-data">Your data</h3>
-        <div className="settings-card">
-          <Setting desc="Download your meds and schedules as a spreadsheet file." wide>
-            <button type="button" onClick={() => void exportPlan()}>
-              Export med plan (CSV)
-            </button>
-          </Setting>
         </div>
       </section>
 
