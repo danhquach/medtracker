@@ -4,8 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { startSyncTriggers } from './data/offline/sync'
 import { routerBasename } from './lib/basePath'
+import { runReminderSpike } from './native/reminderSpike'
 
 startSyncTriggers()
+void runReminderSpike()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
