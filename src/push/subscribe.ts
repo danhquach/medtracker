@@ -1,4 +1,7 @@
 import { supabase } from '../lib/supabase'
+import { enableReminders, forgetReminders, isNativeApp, nativeDeviceState, setRemindersEnabled } from '../native/reminders'
+
+// In the Android app every function here manages on-phone reminders instead of web push.
 
 export type DeviceState = 'on' | 'off' | 'denied' | 'unsupported'
 
@@ -17,6 +20,7 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 }
 
 export async function enablePushOnThisDevice(label: string): Promise<'ok' | 'denied' | 'unsupported'> {
+  if (isNativeApp()) return enableReminders()
   if (!supported()) return 'unsupported'
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return 'denied'
@@ -41,6 +45,7 @@ export async function enablePushOnThisDevice(label: string): Promise<'ok' | 'den
 
 /** Flips `enabled` on this browser's row. Turning on needs a subscription: use enablePushOnThisDevice first. */
 export async function setDeviceEnabled(enabled: boolean): Promise<void> {
+  if (isNativeApp()) return setRemindersEnabled(enabled)
   if (!supported()) return
   const sub = await currentSubscription()
   if (!sub) return
@@ -49,6 +54,7 @@ export async function setDeviceEnabled(enabled: boolean): Promise<void> {
 }
 
 export async function getDeviceState(): Promise<DeviceState> {
+  if (isNativeApp()) return nativeDeviceState()
   if (!supported()) return 'unsupported'
   if (Notification.permission === 'denied') return 'denied'
   if (Notification.permission !== 'granted') return 'off'
@@ -94,6 +100,7 @@ async function removeNow(): Promise<void> {
 
 /** Sign-out helper: forget this device while the session is still valid. Best-effort, never throws, ~3 s cap. */
 export async function removeThisDeviceSubscription(timeoutMs = REMOVE_TIMEOUT_MS): Promise<void> {
+  if (isNativeApp()) return forgetReminders().catch((e: unknown) => console.error('could not clear reminders', e))
   if (!supported()) return
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
