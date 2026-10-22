@@ -1,5 +1,10 @@
+import { isNativeApp, resyncSoon } from '../native/reminders'
+
+// In the Android app both re-plan the phone's reminders, which also clears ones no longer due.
+
 /** Close shown notifications whose dose is no longer pending (tag = dose id). Refill tags are left alone. */
 export async function closeStaleNotifications(pendingDoseIds: Set<string>): Promise<void> {
+  if (isNativeApp()) return resyncSoon()
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
   try {
     const reg = await navigator.serviceWorker.getRegistration()
@@ -14,6 +19,7 @@ export async function closeStaleNotifications(pendingDoseIds: Set<string>): Prom
 
 /** Close this device's notification for one dose (tag = dose id), e.g. after marking it in the app. */
 export async function closeDoseNotification(doseId: string): Promise<void> {
+  if (isNativeApp()) return resyncSoon()
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
   try {
     const reg = await navigator.serviceWorker.getRegistration()

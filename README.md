@@ -27,6 +27,15 @@ Reminders need the app on your home screen.
 | 2. Allow notifications | 2. Open the installed app |
 | Late reminders? Set Chrome's battery use to **Unrestricted** | 3. Turn on push from inside it |
 
+**Android app (sideloaded):** same app, but reminders are scheduled on the phone (exact time, offline, own chime). Needs Android Studio's SDK and JDK 21.
+
+```sh
+npm run android:apk   # android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Then turn on notifications in the app. Use the Android app *or* the installed web app on a phone, not both, or each dose rings twice.
+
 ## How it works
 
 ```mermaid

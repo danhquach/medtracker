@@ -5,6 +5,7 @@ import { getProfile, updateProfile, type ProfilePatch } from '../../data/profile
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 import { useGoBack } from '../../lib/useGoBack'
+import { isNativeApp, showTestReminder } from '../../native/reminders'
 import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled, type DeviceState } from '../../push/subscribe'
 import { unsyncedWarning } from '../../components/syncCopy'
 import { isGuest, needsPasswordFinish, signOut, unsyncedBeforeSignOut } from '../auth/auth'
@@ -18,6 +19,7 @@ import { csvBlob, toCsv } from './exportCsv'
 const SNOOZE = [5, 10, 15, 30, 60] as const
 export const ANDROID_TIP =
   "On Android: in Notifications settings, let MedTracker show on the lock screen, and set Chrome's battery use to Unrestricted so reminders aren't late."
+const APP_TIP = 'Reminders are set on this phone, so they ring on time even offline. Keep the notification volume up to hear them.'
 
 // The saved and detected zones are always valid choices, even when the list omits them (e.g. "UTC").
 function timeZones(...known: (string | null)[]): string[] {
@@ -129,6 +131,7 @@ export default function Settings() {
   async function sendTest() {
     setError(null)
     try {
+      if (isNativeApp()) return await showTestReminder()
       const reg = await navigator.serviceWorker.ready
       await reg.showNotification('Test', { body: 'Notifications are working on this device.' })
     } catch (e) {
@@ -208,7 +211,11 @@ export default function Settings() {
         <div className="settings-card">
           {device.state === 'unsupported' && <p className="muted">This browser cannot receive notifications.</p>}
           {device.state === 'denied' && (
-            <p role="status">Notifications are blocked. Allow them for this site in your browser settings, then reload.</p>
+            <p role="status">
+              {isNativeApp()
+                ? 'Notifications are blocked. Allow them for MedTracker in Android settings, then come back.'
+                : 'Notifications are blocked. Allow them for this site in your browser settings, then reload.'}
+            </p>
           )}
           {(device.state === 'on' || device.state === 'off') && (
             <Setting htmlFor="st-device" label="Notifications on this device" desc="Alerts you when a dose is due.">
@@ -256,7 +263,7 @@ export default function Settings() {
             </Setting>
           )}
         </div>
-        {device.state !== 'unsupported' && <p className="muted settings-note">{ANDROID_TIP}</p>}
+        {device.state !== 'unsupported' && <p className="muted settings-note">{isNativeApp() ? APP_TIP : ANDROID_TIP}</p>}
       </section>
 
       <section className="settings-group" aria-labelledby="st-profile">

@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => ({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      injectRegister: false, // registered in main.tsx, web only (the Android app ships its own files)
       manifest: {
         name: 'MedTracker',
         short_name: 'MedTracker',

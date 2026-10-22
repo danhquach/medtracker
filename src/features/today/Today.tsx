@@ -10,6 +10,7 @@ import { isGuest } from '../auth/auth'
 import LoadError from '../auth/LoadError'
 import { useProfileState } from '../auth/useProfile'
 import { useSession } from '../auth/useSession'
+import { REMINDER_ACTED } from '../../native/reminders'
 import { closeDoseNotification, closeStaleNotifications } from '../../push/closeStale'
 import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
@@ -179,7 +180,11 @@ export default function Today() {
     }
     void onVisible() // cold open counts as becoming visible
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    window.addEventListener(REMINDER_ACTED, onVisible) // Taken/Snooze on an Android app notification
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener(REMINDER_ACTED, onVisible)
+    }
   }, [load, refreshNotifications, rollover])
 
   async function turnOn() {
