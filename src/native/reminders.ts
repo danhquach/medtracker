@@ -73,13 +73,15 @@ export async function setRemindersEnabled(on: boolean): Promise<void> {
 
 /** Sign-out: nothing of this user's may fire or stay on screen on this phone afterwards. */
 export async function forgetReminders(): Promise<void> {
-  write(ENABLED_KEY, null)
-  await enqueue(async () => {
-    write(SNOOZES_KEY, null) // in the queue: a sync in flight would otherwise write them back
+  write(ENABLED_KEY, null) // a sync in flight checks this before it schedules
+  const clear = async () => {
+    write(SNOOZES_KEY, null)
     write(ACTIONS_KEY, null)
     await cancelAll()
     await (await plugin()).LocalNotifications.removeAllDeliveredNotifications()
-  })
+  }
+  await clear() // now, even if a sync is stuck on the network
+  void enqueue(clear).catch((e: unknown) => console.error('could not clear reminders', e)) // and after it, which may write its state back
 }
 
 async function cancelAll(): Promise<void> {

@@ -119,6 +119,23 @@ describe('syncReminders', () => {
     expect(h.ln.removeAllDeliveredNotifications).toHaveBeenCalled()
   })
 
+  it('sign-out clears at once even while a sync is stuck on the network', async () => {
+    h.pending.push({ id: 1 })
+    localStorage.setItem('medtracker-reminder-snoozes', '{"1":9999999999999}')
+    let release!: (m: Medication[]) => void
+    vi.mocked(meds.listMeds).mockReturnValueOnce(new Promise((res) => (release = res))) // stuck until released
+    const sync = r.syncReminders()
+    await until(() => vi.mocked(meds.listMeds).mock.calls.length > 0)
+    await r.forgetReminders()
+    expect(h.pending).toEqual([])
+    expect(h.ln.removeAllDeliveredNotifications).toHaveBeenCalled()
+    expect(localStorage.getItem('medtracker-reminder-snoozes')).toBeNull()
+    release([med]) // the late sync still schedules nothing
+    await sync
+    await r.syncReminders()
+    expect(h.pending).toEqual([])
+  })
+
   it('turning reminders off during a sync in flight leaves nothing scheduled', async () => {
     let release!: (m: Medication[]) => void
     vi.mocked(meds.listMeds).mockReturnValueOnce(new Promise((res) => (release = res)))
