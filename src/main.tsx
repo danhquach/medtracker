@@ -4,17 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { startSyncTriggers } from './data/offline/sync'
 import { routerBasename } from './lib/basePath'
-import { isNativeApp, startReminders } from './native/reminders'
+import { startServiceWorker } from './lib/serviceWorker'
+import { startReminders } from './native/reminders'
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  if (isNativeApp()) {
-    // A cached copy would keep serving the previous build after the APK is updated.
-    void navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => void r.unregister()))
-  } else {
-    const base = import.meta.env.BASE_URL
-    window.addEventListener('load', () => void navigator.serviceWorker.register(`${base}sw.js`, { scope: base }))
-  }
-}
+if ('serviceWorker' in navigator && import.meta.env.PROD) startServiceWorker()
 
 startSyncTriggers()
 void startReminders().catch((e: unknown) => console.error('could not start reminders', e))

@@ -28,7 +28,7 @@ const h = vi.hoisted(() => {
   return { ln, pending, act: (a: unknown) => actionListener?.(a) }
 })
 
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }))
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, isPluginAvailable: () => true } }))
 vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: h.ln }))
 vi.mock('../data/meds', () => ({ listMeds: vi.fn(), listSchedules: vi.fn() }))
 vi.mock('../data/profile', () => ({ getProfile: vi.fn() }))
@@ -180,5 +180,31 @@ describe('notification buttons', () => {
     const ats = h.ln.schedule.mock.calls.flatMap((c) => c[0].notifications.map((n) => n.schedule!.at.getTime()))
     expect(ats).toContain(Date.parse(DUE) + 6 * 60_000)
     expect(JSON.parse(localStorage.getItem('medtracker-reminder-actions')!)).toHaveLength(1) // retried later
+  })
+})
+
+describe('switching to the live-site app', () => {
+  it('reminders off with alarms still set from the old build: clears them on start', async () => {
+    localStorage.removeItem('medtracker-reminders-on')
+    h.pending.push({ id: 1 }, { id: 2 })
+    await r.startReminders()
+    expect(h.pending).toEqual([])
+  })
+
+  it('reminders on: keeps what is scheduled', async () => {
+    h.pending.push({ id: 1 })
+    await r.startReminders()
+    expect(h.ln.cancel).not.toHaveBeenCalled()
+    expect(h.pending).toEqual([{ id: 1 }])
+  })
+
+  it('a Taken tap on an old alarm is kept and sent once reminders are turned on', async () => {
+    localStorage.removeItem('medtracker-reminders-on')
+    await r.startReminders()
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    await tap('taken')
+    expect(doses.setDoseStatus).not.toHaveBeenCalled()
+    await r.setRemindersEnabled(true)
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
   })
 })

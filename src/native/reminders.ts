@@ -17,7 +17,9 @@ const ENABLED_KEY = 'medtracker-reminders-on'
 const SNOOZES_KEY = 'medtracker-reminder-snoozes'
 const ACTIONS_KEY = 'medtracker-reminder-actions'
 
-export const isNativeApp = (): boolean => Capacitor.isNativePlatform()
+// The plugin check, not just "native": the live-site app runs new web code on whatever APK is
+// installed, and one without the plugin falls back to the web path instead of crashing.
+export const isNativeApp = (): boolean => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications')
 
 /** Window event after Taken/Snooze on a notification changed a dose, so open screens reload. */
 export const REMINDER_ACTED = 'medtracker:reminder-acted'
@@ -229,6 +231,9 @@ export async function startReminders(): Promise<void> {
     types: [{ id: ACTION_TYPE, actions: [{ id: 'taken', title: 'Taken' }, { id: 'snooze', title: 'Snooze' }] }],
   })
   await ln.addListener('localNotificationActionPerformed', (a) => void onAction(a))
+  // Off but alarms still set: after switching to the live-site APK, the old build's alarms stay
+  // armed while this origin starts with reminders off. Clear them so turning on doesn't double up.
+  if (!remindersEnabled()) await enqueue(cancelAll)
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && resyncSoon())
   subscribe(resyncSoon) // local edits (meds, doses, snoozes) and reconnects
   resyncSoon()
