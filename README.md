@@ -34,7 +34,7 @@ npm run android:apk   # android/app/build/outputs/apk/debug/app-debug.apk
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Then turn on notifications in the app. Use the Android app *or* the installed web app on a phone, not both, or each dose rings twice.
+Then turn on notifications in the app. Use the Android app *or* the installed web app on a phone, not both, or each dose rings twice. The phone plans a week ahead and updates when the app opens: open it at least weekly, and note a dose marked on another device still rings on the phone until then.
 
 ## How it works
 

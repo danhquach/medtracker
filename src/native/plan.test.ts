@@ -76,6 +76,16 @@ describe('planReminders', () => {
     expect(ats(run())).not.toContain('2026-10-20T12:00:00.000Z')
   })
 
+  it('keeps the wall-clock time across the fall-back change (EDT -> EST on 2026-11-01)', () => {
+    const rows = run({ schedules: [sched({ times: ['09:00:00'] })], nowMs: Date.parse('2026-10-31T14:00:00Z'), days: 3 })
+    expect(ats(rows)).toEqual(['2026-11-01T14:00:00.000Z', '2026-11-02T14:00:00.000Z'])
+    expect(rows.map((r) => r.body)).toEqual(['81 mg, due 9:00 AM', '81 mg, due 9:00 AM'])
+  })
+
+  it('caps the number of reminders, keeping the soonest', () => {
+    expect(ats(run({ days: 7, max: 2 }))).toEqual(['2026-10-21T00:00:00.000Z', '2026-10-21T12:00:00.000Z'])
+  })
+
   it('caps the number of reminders', () => {
     expect(run({ days: 7, max: 3 })).toHaveLength(3)
   })
