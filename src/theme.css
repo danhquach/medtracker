@@ -189,6 +189,10 @@ input {
   padding-top: 48px;
 }
 
+.welcome h1 {
+  text-align: center;
+}
+
 /* A secondary action that reads as a link but keeps the 44px target. */
 button.link {
   color: var(--accent-text);
