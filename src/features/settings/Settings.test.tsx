@@ -393,6 +393,43 @@ describe('Settings', () => {
     })
   })
 
+  describe('sections', () => {
+    const headings = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    const inSection = (name: string, el: HTMLElement) => screen.getByRole('region', { name }).contains(el)
+
+    it('groups settings into four sections, danger zone last', async () => {
+      await loaded()
+      expect(headings()).toEqual(['Reminders & dose times', 'Medications', 'Account', 'Danger zone'])
+    })
+
+    it('keeps every reminder setting, time zone included, in one section', async () => {
+      m.deviceState.state = 'on'
+      await loaded()
+      const r = 'Reminders & dose times'
+      expect(inSection(r, screen.getByRole('switch', { name: /on this device/i }))).toBe(true)
+      expect(inSection(r, screen.getByRole('button', { name: 'Send test notification' }))).toBe(true)
+      expect(inSection(r, screen.getByLabelText(/Snooze length/))).toBe(true)
+      expect(inSection(r, screen.getByLabelText(/Time zone/))).toBe(true)
+      expect(inSection(r, screen.getByText(/On Android/))).toBe(true)
+    })
+
+    it('puts suggestions and export under Medications, email, sign out and nickname under Account', async () => {
+      await loaded()
+      expect(inSection('Medications', screen.getByRole('switch', { name: /suggestions/i }))).toBe(true)
+      expect(inSection('Medications', screen.getByRole('button', { name: /Export med plan/ }))).toBe(true)
+      expect(inSection('Account', screen.getByText('a@b.c'))).toBe(true)
+      expect(inSection('Account', screen.getByRole('button', { name: 'Sign out' }))).toBe(true)
+      expect(inSection('Account', screen.getByLabelText(/Nickname/))).toBe(true)
+    })
+
+    it('shows a guest Create profile and Sign in under Account', async () => {
+      asUser({ is_anonymous: true, email: undefined })
+      await loaded()
+      expect(inSection('Account', screen.getByRole('button', { name: 'Create profile' }))).toBe(true)
+      expect(inSection('Account', screen.getByRole('button', { name: 'Sign in' }))).toBe(true)
+    })
+  })
+
   it('exports the plan as medtracker-plan.csv via a blob URL', async () => {
     const create = vi.fn(() => 'blob:x')
     const revoke = vi.fn()
