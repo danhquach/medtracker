@@ -1,7 +1,7 @@
 import type { Schedule } from '../../lib/types'
-import { FieldError } from './FieldError'
 import { invalidProps, type FieldErrors, type ScheduleDraft } from './validate'
 import { Button } from '../../components/Button'
+import { DateField, FieldError, NumberField, SelectField, TimeField } from '../../components/Field'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const KINDS: { value: Schedule['kind']; label: string }[] = [
@@ -42,16 +42,13 @@ export default function ScheduleEditor({
   return (
     <fieldset className="stack">
       <legend>Schedule</legend>
-      <label>
-        How often
-        <select value={value.kind} onChange={(e) => setKind(e.target.value as Schedule['kind'])}>
-          {KINDS.map((k) => (
-            <option key={k.value} value={k.value}>
-              {k.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectField label="How often" value={value.kind} onChange={(e) => setKind(e.target.value as Schedule['kind'])}>
+        {KINDS.map((k) => (
+          <option key={k.value} value={k.value}>
+            {k.label}
+          </option>
+        ))}
+      </SelectField>
 
       {value.kind === 'weekdays' && (
         <>
@@ -75,31 +72,26 @@ export default function ScheduleEditor({
       )}
 
       {value.kind === 'interval' && (
-        <>
-          <label>
-            Every (days)
-            <input
-              type="number"
-              inputMode="numeric"
-              min={2}
-              value={value.interval_days}
-              onChange={(e) => set({ interval_days: e.target.value })}
-              {...invalidProps(errors.interval_days, id('interval_days'))}
-            />
-          </label>
-          <FieldError id={id('interval_days')} message={errors.interval_days} />
-        </>
+        <NumberField
+          label="Every (days)"
+          inputMode="numeric"
+          step={undefined}
+          min={2}
+          value={value.interval_days}
+          onChange={(e) => set({ interval_days: e.target.value })}
+          error={errors.interval_days}
+        />
       )}
 
       {timed &&
         value.times.map((t, i) => (
-          <div className="row" key={i}>
-            <input
-              type="time"
-              aria-label={`Time ${i + 1}`}
+          <div className="row time-row" key={i}>
+            <TimeField
+              label={`Time ${i + 1}`}
               value={t}
               onChange={(e) => set({ times: value.times.map((x, j) => (j === i ? e.target.value : x)) })}
-              {...invalidProps(errors.times, id('times'))}
+              // One message for the whole list, under the last time.
+              error={i === value.times.length - 1 ? errors.times : undefined}
             />
             {value.times.length > 1 && (
               <Button aria-label={`Remove time ${i + 1}`} onClick={() => set({ times: value.times.filter((_, j) => j !== i) })}>
@@ -108,7 +100,6 @@ export default function ScheduleEditor({
             )}
           </div>
         ))}
-      {timed && <FieldError id={id('times')} message={errors.times} />}
       {timed && (
         <Button onClick={() => set({ times: [...value.times, ''] })}>
           Add time
@@ -118,26 +109,13 @@ export default function ScheduleEditor({
       <details open={value.kind === 'interval' || !!value.end_date || undefined}>
         <summary>Start and end dates</summary>
         <div className="stack">
-          <label>
-            Start date
-            <input
-              type="date"
-              value={value.start_date}
-              onChange={(e) => set({ start_date: e.target.value })}
-              {...invalidProps(errors.start_date, id('start_date'))}
-            />
-          </label>
-          <FieldError id={id('start_date')} message={errors.start_date} />
-          <label>
-            End date
-            <input
-              type="date"
-              value={value.end_date}
-              onChange={(e) => set({ end_date: e.target.value })}
-              {...invalidProps(errors.end_date, id('end_date'))}
-            />
-          </label>
-          <FieldError id={id('end_date')} message={errors.end_date} />
+          <DateField
+            label="Start date"
+            value={value.start_date}
+            onChange={(e) => set({ start_date: e.target.value })}
+            error={errors.start_date}
+          />
+          <DateField label="End date" value={value.end_date} onChange={(e) => set({ end_date: e.target.value })} error={errors.end_date} />
         </div>
       </details>
       {onRemove && (
