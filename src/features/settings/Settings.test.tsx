@@ -78,14 +78,14 @@ const loaded = async () => {
 describe('Settings', () => {
   it('saves the time zone', async () => {
     await loaded()
-    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
-    await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ time_zone: 'Europe/London' }))
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'America/Vancouver' } })
+    await waitFor(() => expect(m.updateProfile).toHaveBeenCalledWith({ time_zone: 'America/Vancouver' }))
   })
 
   it('shows why a time zone save failed', async () => {
     m.updateProfile.mockRejectedValueOnce(new Error('bad zone'))
     await loaded()
-    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'America/Vancouver' } })
     expect((await screen.findByRole('alert')).textContent).toContain('bad zone')
   })
 
@@ -121,15 +121,22 @@ describe('Settings', () => {
     await waitFor(() => expect(screen.getByText('Saved').closest('label')?.textContent).toContain('suggestions'))
   })
 
-  it('searches time zones and only saves a real zone; a partial entry reverts on leaving', async () => {
+  it('offers a short list of Canada and US zones, with the saved one selected', async () => {
     await loaded()
-    const input = screen.getByLabelText(/Time zone/) as HTMLInputElement
-    expect(input.getAttribute('list')).toBe('st-zones')
-    expect(document.querySelector('#st-zones option[value="Europe/London"]')).toBeTruthy()
-    fireEvent.change(input, { target: { value: 'Europe/Lon' } })
-    fireEvent.blur(input)
-    expect(m.updateProfile).not.toHaveBeenCalled()
-    expect(input.value).toBe('America/Toronto')
+    const select = screen.getByLabelText(/Time zone/) as HTMLSelectElement
+    expect(select.tagName).toBe('SELECT')
+    expect(select.value).toBe('America/Toronto')
+    const values = [...select.options].map((o) => o.value)
+    expect(values).toEqual(expect.arrayContaining(['America/St_Johns', 'America/Halifax', 'America/Vancouver', 'Pacific/Honolulu']))
+    expect(screen.getByRole('option', { name: /Eastern \(ET\)/ })).toBeTruthy()
+  })
+
+  it('keeps a saved zone that is not in the short list as a choice', async () => {
+    m.getProfile.mockResolvedValue({ ...profile, time_zone: 'Europe/London' })
+    await loaded()
+    const select = screen.getByLabelText(/Time zone/) as HTMLSelectElement
+    expect(select.value).toBe('Europe/London')
+    expect(select.options[0].textContent).toBe('Europe/London')
   })
 
   it("offers the device's detected time zone when it differs", async () => {
@@ -320,9 +327,9 @@ describe('Settings', () => {
     m.updateProfile.mockRejectedValueOnce(new Error('regenerate failed'))
     m.getProfile.mockResolvedValueOnce(profile).mockResolvedValueOnce({ ...profile, time_zone: 'Europe/London' })
     await loaded()
-    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'Europe/London' } })
+    fireEvent.change(screen.getByLabelText(/Time zone/), { target: { value: 'America/Vancouver' } })
     await screen.findByRole('alert')
-    await waitFor(() => expect((screen.getByLabelText(/Time zone/) as HTMLInputElement).value).toBe('Europe/London'))
+    await waitFor(() => expect((screen.getByLabelText(/Time zone/) as HTMLSelectElement).value).toBe('Europe/London'))
     expect(m.getProfile).toHaveBeenCalledTimes(2)
   })
 
