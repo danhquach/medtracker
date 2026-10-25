@@ -6,11 +6,13 @@ import { startSyncTriggers } from './data/offline/sync'
 import { routerBasename } from './lib/basePath'
 import { startServiceWorker } from './lib/serviceWorker'
 import { startReminders } from './native/reminders'
+import { startTapHaptics } from './native/tapHaptics'
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) startServiceWorker()
 
 startSyncTriggers()
 void startReminders().catch((e: unknown) => console.error('could not start reminders', e))
+startTapHaptics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
