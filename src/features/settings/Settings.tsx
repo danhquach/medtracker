@@ -19,6 +19,8 @@ import { BOM, csvBlob, toCsv } from './exportCsv'
 import { Button } from '../../components/Button'
 import { TextField } from '../../components/Field'
 import { Notice, Row, RowGroup } from '../../components/layout'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { useConfirm } from '../../components/useConfirm'
 
 const PLAN_FILE = 'medtracker-plan.csv'
 
@@ -80,6 +82,7 @@ export default function Settings() {
   const [deleting, setDeleting] = useState(false)
   const [busy, setBusy] = useState(false)
   const deleteButton = useRef<HTMLButtonElement>(null)
+  const [confirm, confirmDialog] = useConfirm()
   const device = useDeviceNotificationState()
 
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -179,7 +182,8 @@ export default function Settings() {
     setError(null)
     try {
       const unsynced = await unsyncedBeforeSignOut()
-      if (unsynced > 0 && !window.confirm(unsyncedWarning(unsynced))) return
+      if (unsynced > 0 && !(await confirm({ title: 'Sign out?', message: unsyncedWarning(unsynced), confirmLabel: 'Sign out', danger: true })))
+        return
       await signOut()
     } catch (e) {
       setError(msg(e, 'Could not sign out'))
@@ -412,6 +416,7 @@ export default function Settings() {
           <DeleteDialog busy={busy} returnFocus={deleteButton} onConfirm={() => void deleteProfile()} onClose={() => setDeleting(false)} />
         )}
       </section>
+      {confirmDialog}
     </main>
   )
 }
@@ -445,7 +450,6 @@ function ReminderStatus({ state, zone }: { state: DeviceState | null; zone: stri
   )
 }
 
-/** Takes focus on open, keeps Tab inside, closes on Escape, and hands focus back to the opener. */
 function DeleteDialog({
   busy,
   returnFocus,
@@ -457,47 +461,20 @@ function DeleteDialog({
   onConfirm: () => void
   onClose: () => void
 }) {
-  const ref = useRef<HTMLDivElement>(null)
   const [confirmText, setConfirmText] = useState('')
-
-  useEffect(() => {
-    const opener = returnFocus.current
-    ref.current?.querySelector('input')?.focus()
-    return () => opener?.focus()
-  }, [returnFocus])
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape' && !busy) {
-      e.preventDefault()
-      onClose()
-      return
-    }
-    if (e.key !== 'Tab' || !ref.current) return
-    const items = [...ref.current.querySelectorAll<HTMLElement>('input, button:not(:disabled)')]
-    const first = items[0]
-    const last = items[items.length - 1]
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault()
-      last?.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault()
-      first?.focus()
-    }
-  }
-
   return (
-    <div ref={ref} role="dialog" aria-modal="true" aria-labelledby="st-delete-title" className="stack" onKeyDown={onKeyDown}>
-      <h4 id="st-delete-title">Delete profile?</h4>
+    <ConfirmDialog
+      title="Delete profile?"
+      confirmLabel={busy ? 'Deleting…' : 'Delete my profile'}
+      danger
+      busy={busy}
+      confirmDisabled={confirmText !== 'DELETE'}
+      returnFocus={returnFocus}
+      onConfirm={onConfirm}
+      onCancel={onClose}
+    >
       <p>This permanently deletes your profile and all your medications and history. Type DELETE to confirm.</p>
       <input aria-label="Type DELETE to confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
-      <div className="row">
-        <Button variant="danger" disabled={confirmText !== 'DELETE'} busy={busy} onClick={onConfirm}>
-          {busy ? 'Deleting…' : 'Delete my profile'}
-        </Button>
-        <Button disabled={busy} onClick={onClose}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+    </ConfirmDialog>
   )
 }

@@ -14,6 +14,7 @@ import MedForm from './MedForm'
 import { isStopped, nextDoseText } from './summary'
 import { Button } from '../../components/Button'
 import { Notice } from '../../components/layout'
+import { useConfirm } from '../../components/useConfirm'
 
 export default function MedsList() {
   const profile = useProfile()
@@ -29,6 +30,7 @@ export default function MedsList() {
   const { id: editId } = useParams()
   const navigate = useNavigate()
   const closeForm = useGoBack('/meds')
+  const [confirm, confirmDialog] = useConfirm()
   const tz = profile?.time_zone ?? DEFAULT_TIME_ZONE
 
   const load = useCallback(async () => {
@@ -77,12 +79,19 @@ export default function MedsList() {
   // Shared by the card menu and the edit screen; each returns whether it ran.
   const pause = (m: Medication) => run(() => setPaused(m.id, !m.paused), 'Could not update medication')
   const stop = async (m: Medication) => {
-    if (!window.confirm(`Stop ${m.name}? No doses after today. Its history is kept.`)) return false
+    const ok = await confirm({ title: `Stop ${m.name}?`, message: 'No doses after today. Its history is kept.', confirmLabel: 'Stop' })
+    if (!ok) return false
     await run(() => stopMed(m, own(m), today), 'Could not stop medication')
     return true
   }
   const remove = async (m: Medication) => {
-    if (!window.confirm(`Delete ${m.name}? This also removes its schedule and dose history.`)) return false
+    const ok = await confirm({
+      title: `Delete ${m.name}?`,
+      message: 'This also removes its schedule and dose history.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return false
     await run(() => deleteMed(m.id), 'Could not delete medication')
     return true
   }
@@ -121,6 +130,7 @@ export default function MedsList() {
             }
           }
         />
+        {confirmDialog}
       </main>
     )
   }
@@ -150,6 +160,7 @@ export default function MedsList() {
       <Button variant="fab" onClick={() => navigate('/meds/new')}>
         + Add
       </Button>
+      {confirmDialog}
     </main>
   )
 }
