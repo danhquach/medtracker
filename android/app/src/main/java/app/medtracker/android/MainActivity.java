@@ -6,6 +6,7 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
@@ -20,6 +21,30 @@ public class MainActivity extends BridgeActivity {
         bridge.getWebView().addJavascriptInterface(press, "MedTrackerPress");
         bridge.getWebView().setOnLongClickListener((v) -> press.onControl);
         if (bridge.getErrorUrl() != null) bridge.setWebViewClient(new OfflineAwareClient(bridge));
+        getOnBackPressedDispatcher().addCallback(this, new WebBack());
+    }
+
+    /**
+     * Back walks the app's own history like the in-app Back button (MT-110), so the page also hears it and
+     * an open dialog can cancel instead. From the first screen Back leaves the app as usual.
+     */
+    class WebBack extends OnBackPressedCallback {
+
+        WebBack() {
+            super(true);
+        }
+
+        @Override
+        public void handleOnBackPressed() {
+            WebView web = bridge.getWebView();
+            if (web.canGoBack()) {
+                web.goBack();
+                return;
+            }
+            setEnabled(false);
+            getOnBackPressedDispatcher().onBackPressed();
+            setEnabled(true);
+        }
     }
 
     /**

@@ -5,6 +5,25 @@ import { Button } from './Button'
 
 const FOCUSABLE = 'input, select, textarea, button:not(:disabled), a[href]'
 
+// Back (Android or browser) with a dialog open cancels it instead of leaving the screen (MT-110). The step
+// back is stopped before the router hears it and undone with a step forward, which is stopped too; nothing is
+// added to history, so closing the dialog any other way leaves no extra step behind.
+let onBack: (() => void) | null = null
+let undoing = false
+window.addEventListener(
+  'popstate',
+  (e) => {
+    if (undoing) undoing = false
+    else if (onBack) {
+      undoing = true
+      history.go(1)
+      onBack()
+    } else return
+    e.stopImmediatePropagation()
+  },
+  true,
+)
+
 /** Takes focus on open, keeps Tab inside, cancels on Escape, and hands focus back to the opener. */
 export function ConfirmDialog({
   title,
@@ -57,6 +76,15 @@ export function ConfirmDialog({
     }
     document.addEventListener('keydown', onEscape)
     return () => document.removeEventListener('keydown', onEscape)
+  }, [busy, onCancel])
+
+  useEffect(() => {
+    onBack = () => {
+      if (!busy) onCancel()
+    }
+    return () => {
+      onBack = null
+    }
   }, [busy, onCancel])
 
   function onKeyDown(e: React.KeyboardEvent) {

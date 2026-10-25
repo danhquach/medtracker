@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { BrowserRouter, Link, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useConfirm } from './useConfirm'
@@ -144,5 +145,72 @@ describe('useConfirm', () => {
     expect(onResult).toHaveBeenCalledWith(false)
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Stop' })))
     expect(onResult.mock.calls).toEqual([[false], [true]])
+  })
+})
+
+describe('Back with a dialog open (MT-110)', () => {
+  function Screen({ onResult }: { onResult: (ok: boolean) => void }) {
+    const [confirm, dialog] = useConfirm()
+    return (
+      <>
+        <p data-testid="path">{useLocation().pathname}</p>
+        <Link to="/meds/1/edit">Edit</Link>
+        <button onClick={() => void confirm({ title: 'Delete Aspirin?', message: 'Gone for good.', confirmLabel: 'Delete' }).then(onResult)}>
+          Delete
+        </button>
+        {dialog}
+      </>
+    )
+  }
+
+  // List → edit screen, so there is a step back to take.
+  const renderOnEditScreen = () => {
+    window.history.replaceState(null, '', '/meds')
+    const onResult = vi.fn()
+    render(
+      <BrowserRouter>
+        <Screen onResult={onResult} />
+      </BrowserRouter>,
+    )
+    fireEvent.click(screen.getByRole('link', { name: 'Edit' }))
+    expect(screen.getByTestId('path').textContent).toBe('/meds/1/edit')
+    return onResult
+  }
+  const back = () => act(async () => window.history.back())
+  const settled = () => act(() => new Promise((r) => setTimeout(r, 50)))
+
+  it('cancels the dialog and stays on the screen', async () => {
+    const onResult = renderOnEditScreen()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await back()
+    await settled()
+    expect(onResult).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByTestId('path').textContent).toBe('/meds/1/edit')
+    expect(window.location.pathname).toBe('/meds/1/edit')
+  })
+
+  it('goes back as usual with no dialog open, including after one closed', async () => {
+    renderOnEditScreen()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' })))
+    await back()
+    await settled()
+    expect(screen.getByTestId('path').textContent).toBe('/meds')
+    expect(window.location.pathname).toBe('/meds')
+  })
+
+  it('stays put without cancelling while busy', async () => {
+    renderOnEditScreen()
+    const onCancel = vi.fn()
+    render(
+      <ConfirmDialog title="Delete profile?" confirmLabel="Deleting…" busy onConfirm={() => {}} onCancel={onCancel}>
+        <p>Deleting.</p>
+      </ConfirmDialog>,
+    )
+    await back()
+    await settled()
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByTestId('path').textContent).toBe('/meds/1/edit')
   })
 })
