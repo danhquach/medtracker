@@ -168,6 +168,23 @@ describe('MedForm', () => {
     expect(screen.queryByRole('group', { name: 'Manage medication' })).toBeNull()
   })
 
+  it('a new med has the DIN/NPN row above the name search; editing does not (MT-103)', () => {
+    const view = renderForm()
+    const din = screen.getByLabelText('DIN or NPN (on the label)')
+    const divider = screen.getByText('or search by name')
+    const name = screen.getByLabelText('Name')
+    expect(din.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(divider.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    view.unmount()
+    const m: Medication = {
+      id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,
+      stock: null, refill_threshold_days: 7, notify: true, paused: false, refill_alerted_at: null, created_at: '', updated_at: '',
+    }
+    render(<MedForm med={m} meds={[m]} remoteSuggestions today="2026-10-19" onSave={onSave} onCancel={onCancel} />)
+    expect(screen.queryByLabelText('DIN or NPN (on the label)')).toBeNull()
+    expect(screen.queryByText('or search by name')).toBeNull()
+  })
+
   describe('editing keeps stock changed elsewhere (MT-11)', () => {
     const existing: Medication = {
       id: 'm1', user_id: 'u1', name: 'Ibuprofen', strength: null, form: 'tablet', notes: null, units_per_dose: 1,

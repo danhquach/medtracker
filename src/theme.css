@@ -868,6 +868,28 @@ fieldset {
   margin-top: 8px;
 }
 
+/* Add Med's DIN/NPN row: matches and the lookup message sit under the field; empty, the message takes no space. */
+.din-npn > .row,
+.din-npn > .hint:not(:empty) {
+  margin-top: 8px;
+}
+
+/* "or search by name" between two rules. */
+.divider-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--divider);
+}
+
 /* Each dose time with its Remove button beside the input, below the label. */
 .time-row {
   align-items: flex-start;
