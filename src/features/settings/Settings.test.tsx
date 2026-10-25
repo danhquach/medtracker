@@ -2,6 +2,7 @@ import type { User } from '@supabase/supabase-js'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PRODUCT_DATA } from '../dinLookup/dataVersion'
 import Settings from './Settings'
 
 const renderSettings = (at = '/settings') =>
@@ -217,6 +218,14 @@ describe('Settings', () => {
     expect(desc(screen.getByRole('switch', { name: /suggestions/i }))).toMatch(/as you type/)
   })
 
+  it('About shows the product data date and licence line', async () => {
+    await loaded()
+    const about = screen.getByRole('region', { name: 'About' })
+    expect(about.textContent).toContain(
+      `Product data as of ${PRODUCT_DATA.generatedAt}. Contains information licensed under the Open Government Licence – Canada.`,
+    )
+  })
+
   it('shows the Android lock-screen and battery tip', async () => {
     m.deviceState.state = 'on'
     await loaded()
@@ -414,9 +423,9 @@ describe('Settings', () => {
     const headings = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     const inSection = (name: string, el: HTMLElement) => screen.getByRole('region', { name }).contains(el)
 
-    it('groups settings into four sections, danger zone last', async () => {
+    it('groups settings into five sections, danger zone last', async () => {
       await loaded()
-      expect(headings()).toEqual(['Reminders & dose times', 'Medications', 'Account', 'Danger zone'])
+      expect(headings()).toEqual(['Reminders & dose times', 'Medications', 'About', 'Account', 'Danger zone'])
     })
 
     it('keeps every reminder setting, time zone included, in one section', async () => {

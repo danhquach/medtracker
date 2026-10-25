@@ -177,6 +177,22 @@ Dose times follow the profile's time zone (`0013_time_zones.sql`; the offline cl
 
 ---
 
+## Refresh product data
+
+Add Med looks a DIN up in a copy of Health Canada's Drug Product Database that ships with the app (`public/products/din.json`), so lookups never contact Health Canada. Refresh it about once a month:
+
+```sh
+node scripts/build-product-data.mjs
+```
+
+1. The script downloads the four DPD extracts and rewrites `public/products/din.json` and `src/features/dinLookup/dataVersion.ts`. A failed download exits non-zero and leaves both files untouched.
+2. Check the output line (`din.json: <n> products, as of <date>`). The count should be close to the last refresh (57,890 on 2026-10-25), and the file about 8 MB. A big drop means a source changed: don't commit.
+3. Run `npm test`, then commit both files through a PR.
+
+The new `generatedAt` date changes the file's `?v=` query, so devices download the new list on their next lookup, and Settings → About shows the new date. NPN data (Health Canada's natural products API) isn't built yet.
+
+---
+
 ## Known risks
 
 | Risk | Mitigation |
