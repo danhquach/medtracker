@@ -22,11 +22,8 @@ beforeEach(() => {
 })
 
 describe('canScanLabel', () => {
-  it('only on an app install that has the scanner', () => {
-    expect(canScanLabel()).toBe(true)
-    h.plugin = false
+  it('is off, even on an app install that has the scanner, until scanning sends nothing to Google', () => {
     expect(canScanLabel()).toBe(false)
-    h.plugin = true
     h.native = false
     expect(canScanLabel()).toBe(false)
   })

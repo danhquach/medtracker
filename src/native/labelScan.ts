@@ -6,8 +6,13 @@ import { findCandidates } from '../features/dinLookup/candidates'
 type Block = { text: string; lines: string[] }
 const LabelScanner = registerPlugin<{ scan(): Promise<{ blocks: Block[] }> }>('LabelScanner')
 
+// Off: ML Kit queues usage logs for firebaselogging.googleapis.com and can't run without that code
+// (MT-107 privacy gate), so the Scan button stays hidden until scanning sends nothing to Google.
+const SCAN_ENABLED = false
+
 // The plugin check, not just "native": the live-site app runs new web code on whatever APK is installed.
-export const canScanLabel = (): boolean => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LabelScanner')
+export const canScanLabel = (): boolean =>
+  SCAN_ENABLED && Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LabelScanner')
 
 /** The 8-digit numbers on the label, best first; 'cancelled' when the camera was closed without a photo. */
 export async function scanLabel(): Promise<string[] | 'cancelled' | 'no-camera'> {
