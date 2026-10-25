@@ -65,13 +65,13 @@ export function Chip({ tone, inline, children }: { tone?: 'low'; inline?: boolea
  * A message about the whole screen or form: info is announced politely, an error interrupts.
  * Render it even while empty when the next message must be announced (it collapses when empty).
  */
-export function Notice({ tone = 'info', children }: { tone?: 'info' | 'error'; children?: ReactNode }) {
+export function Notice({ tone = 'info', children }: { tone?: 'info' | 'warning' | 'error'; children?: ReactNode }) {
   return tone === 'error' ? (
     <p role="alert" className="notice notice-error">
       {children}
     </p>
   ) : (
-    <p role="status" className="notice">
+    <p role="status" className={cx('notice', tone === 'warning' && 'notice-warning')}>
       {children}
     </p>
   )
