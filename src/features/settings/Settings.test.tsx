@@ -1,5 +1,5 @@
 import type { User } from '@supabase/supabase-js'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
@@ -270,27 +270,33 @@ describe('Settings', () => {
   })
 
   it('signed-in user can sign out', async () => {
-    await loaded()
     const confirm = vi.spyOn(window, 'confirm')
+    await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(m.signOut).toHaveBeenCalled())
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(confirm).not.toHaveBeenCalled()
   })
 
-  it('sign-out with pending changes asks before clearing', async () => {
+  it('sign-out with pending changes asks in the app dialog before clearing', async () => {
     m.unsynced.mockResolvedValueOnce(2)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const confirm = vi.spyOn(window, 'confirm')
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
-    await waitFor(() => expect(confirm).toHaveBeenCalledWith("2 changes haven't synced and will be lost. Sign out anyway?"))
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out?' })
+    expect(dialog.textContent).toContain("2 changes haven't synced and will be lost. Sign out anyway?")
+    expect(confirm).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(m.signOut).not.toHaveBeenCalled()
   })
 
   it('sign-out with pending changes proceeds when confirmed', async () => {
     m.unsynced.mockResolvedValueOnce(1)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(m.signOut).toHaveBeenCalled())
   })
 
