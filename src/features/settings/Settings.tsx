@@ -17,6 +17,7 @@ import { useDeviceNotificationState } from '../notifications/useDeviceNotificati
 import { canShareFile, shareFile } from '../../native/shareFile'
 import { BOM, csvBlob, toCsv } from './exportCsv'
 import { Button } from '../../components/Button'
+import { TextField } from '../../components/Field'
 
 const PLAN_FILE = 'medtracker-plan.csv'
 
@@ -387,17 +388,19 @@ export default function Settings() {
                 saveNickname()
               }}
             >
-              <Setting
-                htmlFor="st-nickname"
-                label={
-                  <>
-                    Nickname <Saved show={saved === 'nickname'} />
-                  </>
-                }
-                wide
-              >
-                <input id="st-nickname" value={nickname} maxLength={40} onChange={(e) => setNickname(e.target.value)} onBlur={saveNickname} />
-              </Setting>
+              <div className="setting wide">
+                <TextField
+                  label={
+                    <>
+                      Nickname <Saved show={saved === 'nickname'} />
+                    </>
+                  }
+                  value={nickname}
+                  maxLength={40}
+                  onChange={(e) => setNickname(e.target.value)}
+                  onBlur={saveNickname}
+                />
+              </div>
             </form>
           )}
         </div>

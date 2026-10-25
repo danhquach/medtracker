@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { changes } from '../../components/syncCopy'
 import { pendingCount } from '../../data/offline/sync'
 import { createProfile, GUEST_LEFT_BEHIND, signIn, signUp } from './auth'
 import { Button } from '../../components/Button'
+import { TextField } from '../../components/Field'
+import { emailError, PASSWORD_RULE, passwordError } from './validate'
 
 export type CredentialsMode = 'signup' | 'signin' | 'upgrade'
 
@@ -27,12 +29,22 @@ export default function CredentialsForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const needsGuestConfirm = mode === 'signin' && guest && !confirmed
   const newPassword = mode !== 'signin'
+  // Errors show from the first submit on and update as the user fixes them.
+  const errors = attempt > 0 ? { email: emailError(email), password: passwordError(password) } : {}
+
+  useEffect(() => {
+    if (attempt > 0) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [attempt])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    setAttempt((n) => n + 1)
+    if (emailError(email) || passwordError(password)) return
     if (needsGuestConfirm) {
       setUnsynced(await pendingCount())
       setConfirmed(true)
@@ -68,28 +80,27 @@ export default function CredentialsForm({
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      <label>
-        Email
-        <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-      </label>
-      <label>
-        Password
-        <input
-          type="password"
-          autoComplete={newPassword ? 'new-password' : 'current-password'}
-          required
-          minLength={8}
-          aria-describedby={newPassword ? 'password-rule' : undefined}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-      </label>
-      {newPassword && (
-        <p id="password-rule" className="muted hint">
-          At least 8 characters.
-        </p>
-      )}
+    <form className="stack" onSubmit={submit} noValidate ref={formRef}>
+      <TextField
+        label="Email"
+        type="email"
+        autoComplete="email"
+        required
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        error={errors.email}
+      />
+      <TextField
+        label="Password"
+        type="password"
+        autoComplete={newPassword ? 'new-password' : 'current-password'}
+        required
+        minLength={8}
+        hint={newPassword ? PASSWORD_RULE : undefined}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        error={errors.password}
+      />
       {confirmed && (
         <p role="alert">
           {GUEST_LEFT_BEHIND}

@@ -2,9 +2,8 @@ import { useId, useState } from 'react'
 import type { Medication } from '../../lib/types'
 import type { Suggestion } from '../autocomplete/sources'
 import { useSuggestions } from '../autocomplete/useSuggestions'
-import { FieldError } from './FieldError'
-import { invalidProps } from './validate'
 import { Button } from '../../components/Button'
+import { TextField } from '../../components/Field'
 
 export default function NameAutocomplete({
   value,
@@ -26,7 +25,6 @@ export default function NameAutocomplete({
   const [typed, setTyped] = useState('')
   const { mine, ca, us } = useSuggestions(typed, meds, remoteEnabled)
   const listId = useId()
-  const errorId = useId()
 
   const groups = [
     { title: 'Your meds', items: mine, state: 'done' as const },
@@ -49,22 +47,19 @@ export default function NameAutocomplete({
         }
       }}
     >
-      <label>
-        Name
-        <input
-          value={value}
-          autoComplete="off"
-          aria-expanded={showing}
-          aria-controls={showing ? listId : undefined}
-          onChange={(e) => {
-            onChange(e.target.value)
-            setTyped(e.target.value)
-            setOpen(true)
-          }}
-          {...invalidProps(error, errorId)}
-        />
-      </label>
-      <FieldError id={errorId} message={error} />
+      <TextField
+        label="Name"
+        value={value}
+        autoComplete="off"
+        aria-expanded={showing}
+        aria-controls={showing ? listId : undefined}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setTyped(e.target.value)
+          setOpen(true)
+        }}
+        error={error}
+      />
       {showing && (
         <div className="suggestions" id={listId}>
           {groups.map((g) => (

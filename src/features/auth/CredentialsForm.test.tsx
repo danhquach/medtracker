@@ -12,6 +12,43 @@ import CredentialsForm from './CredentialsForm'
 
 beforeEach(() => api.signIn.mockClear())
 
+/** The error text a field points at via aria-describedby (after any hint). */
+const errorFor = (label: string) => {
+  const el = screen.getByLabelText(label)
+  expect(el.getAttribute('aria-invalid')).toBe('true')
+  const ids = el.getAttribute('aria-describedby')!.split(' ')
+  return document.getElementById(ids[ids.length - 1])?.textContent
+}
+
+describe('CredentialsForm field errors', () => {
+  it('shows each error under its field, focuses the first, and does not submit', () => {
+    render(<CredentialsForm mode="signin" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(errorFor('Email')).toBe('Enter your email')
+    expect(errorFor('Password')).toBe('Enter your password')
+    expect(document.activeElement).toBe(screen.getByLabelText('Email'))
+    expect(api.signIn).not.toHaveBeenCalled()
+  })
+
+  it('flags a malformed email and a short new password; clears as they are fixed', () => {
+    render(<CredentialsForm mode="signup" />)
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'short' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create profile' }))
+    expect(errorFor('Email')).toMatch(/valid email/)
+    expect(errorFor('Password')).toBe('Password must be at least 8 characters')
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } })
+    expect(screen.getByLabelText('Email').getAttribute('aria-invalid')).toBeNull()
+  })
+
+  it('validates before the guest warning', () => {
+    render(<CredentialsForm mode="signin" guest />)
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(screen.queryByText('Your guest data on this device will be left behind.')).toBeNull()
+    expect(errorFor('Email')).toBe('Enter your email')
+  })
+})
+
 describe('CredentialsForm guest sign-in', () => {
   it('warns on first submit, signs in on second', async () => {
     render(<CredentialsForm mode="signin" guest />)

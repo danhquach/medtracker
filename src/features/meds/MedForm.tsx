@@ -2,12 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { Medication, MedForm as MedFormKind, Schedule } from '../../lib/types'
 import type { MedInput, ScheduleInput } from '../../data/meds'
 import type { Suggestion } from '../autocomplete/sources'
-import { FieldError } from './FieldError'
 import NameAutocomplete from './NameAutocomplete'
 import ScheduleEditor from './ScheduleEditor'
 import { isStopped, stockUnit } from './summary'
-import { invalidProps, toMedInput, toScheduleInput, validateMed, type FieldErrors, type ScheduleDraft } from './validate'
+import { toMedInput, toScheduleInput, validateMed, type FieldErrors, type ScheduleDraft } from './validate'
 import { Button } from '../../components/Button'
+import { NumberField, SelectField, TextField } from '../../components/Field'
 
 const FORMS: MedFormKind[] = ['tablet', 'capsule', 'liquid', 'other']
 
@@ -165,61 +165,37 @@ export default function MedForm({
       <details className="more" ref={moreRef} open={!!med || undefined}>
         <summary>More details</summary>
         <div className="stack">
-          <label>
-            Strength
-            <input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="e.g. 200 mg" />
-          </label>
-          <label>
-            Form
-            <select value={form} onChange={(e) => setForm(e.target.value)}>
-              <option value="">—</option>
-              {FORMS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Notes
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-          <label>
-            Amount per dose ({unit})
-            <input
-              type="number"
-              inputMode="decimal"
-              step="any"
-              value={units}
-              onChange={(e) => setUnits(e.target.value)}
-              {...invalidProps(errors.units_per_dose, id('units'))}
-            />
-          </label>
-          <FieldError id={id('units')} message={errors.units_per_dose} />
-          <label>
-            Stock ({unit})
-            <input
-              type="number"
-              inputMode="decimal"
-              step="any"
-              value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              placeholder="Leave empty to not track"
-              {...invalidProps(errors.stock, id('stock'))}
-            />
-          </label>
-          <FieldError id={id('stock')} message={errors.stock} />
-          <label>
-            Refill threshold (days)
-            <input
-              type="number"
-              inputMode="numeric"
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-              {...invalidProps(errors.refill_threshold_days, id('threshold'))}
-            />
-          </label>
-          <FieldError id={id('threshold')} message={errors.refill_threshold_days} />
+          <TextField label="Strength" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="e.g. 200 mg" />
+          <SelectField label="Form" value={form} onChange={(e) => setForm(e.target.value)}>
+            <option value="">—</option>
+            {FORMS.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </SelectField>
+          <TextField label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <NumberField
+            label={`Amount per dose (${unit})`}
+            value={units}
+            onChange={(e) => setUnits(e.target.value)}
+            error={errors.units_per_dose}
+          />
+          <NumberField
+            label={`Stock (${unit})`}
+            value={stock}
+            onChange={(e) => setStock(e.target.value)}
+            placeholder="Leave empty to not track"
+            error={errors.stock}
+          />
+          <NumberField
+            label="Refill threshold (days)"
+            inputMode="numeric"
+            step={undefined}
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            error={errors.refill_threshold_days}
+          />
           <label>
             <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} style={{ display: 'inline', width: 'auto' }} /> Remind me
           </label>

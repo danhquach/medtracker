@@ -834,6 +834,25 @@ fieldset {
   font-size: 0.9rem;
 }
 
+/* A shared field (components/Field) keeps its hint and error together with the control. */
+.field > .hint,
+.field > .field-error {
+  margin-top: 8px;
+}
+
+/* Each dose time with its Remove button beside the input, below the label. */
+.time-row {
+  align-items: flex-start;
+}
+
+.time-row > .field {
+  flex: 1;
+}
+
+.time-row > button {
+  margin-top: calc(1lh + 4px);
+}
+
 [aria-invalid='true'] {
   border-color: var(--danger);
 }
