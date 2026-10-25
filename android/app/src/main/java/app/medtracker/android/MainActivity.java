@@ -1,6 +1,7 @@
 package app.medtracker.android;
 
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -15,7 +16,25 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(TapHapticsPlugin.class);
         super.onCreate(savedInstanceState);
+        ControlPress press = new ControlPress();
+        bridge.getWebView().addJavascriptInterface(press, "MedTrackerPress");
+        bridge.getWebView().setOnLongClickListener((v) -> press.onControl);
         if (bridge.getErrorUrl() != null) bridge.setWebViewClient(new OfflineAwareClient(bridge));
+    }
+
+    /**
+     * Long press on a button or link (MT-96): the page reports where each touch press starts. Claiming the
+     * long click on a control stops the WebView's link tooltip and keeps the touch going so the page sees
+     * the release; presses on plain text keep the normal long press, so text stays selectable.
+     */
+    static class ControlPress {
+
+        volatile boolean onControl;
+
+        @JavascriptInterface
+        public void start(boolean onControl) {
+            this.onControl = onControl;
+        }
     }
 
     /**
