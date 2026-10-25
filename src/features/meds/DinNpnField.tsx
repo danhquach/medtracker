@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Button } from '../../components/Button'
 import { TextField } from '../../components/Field'
 import { numberFromPaste } from '../dinLookup/candidates'
@@ -23,7 +23,7 @@ export default function DinNpnField({
   onMatch: (p: Product, viaScan: boolean) => void
 }) {
   const { ensure } = useProductLists()
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<ReactNode>('')
   const [choices, setChoices] = useState<Product[]>([])
   // Numbers read from a label photo, waiting for the user to confirm one.
   const [scanned, setScanned] = useState<string[] | null>(null)
@@ -71,7 +71,13 @@ export default function DinNpnField({
     }
     setScanned(numbers)
     if (numbers.length === 0) setMessage("Couldn't find an 8-digit DIN/NPN in the photo.")
-    else if (numbers.length === 1) setMessage(`Read: ${spaced(numbers[0])}. Does this match the label?`)
+    else if (numbers.length === 1)
+      setMessage(
+        <>
+          Read: <span className="label-number">{spaced(numbers[0])}</span>.{' '}
+          <span className="scan-question">Does this match the label?</span>
+        </>,
+      )
     else setMessage('Which number is on the label next to DIN/NPN?')
   }
 

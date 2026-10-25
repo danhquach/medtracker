@@ -905,9 +905,67 @@ fieldset {
   border-color: var(--warning);
 }
 
-/* The "I've checked…" tick sits right above the Save it unlocks. */
+/* A DIN/NPN shown back to the user, set apart so it's easy to compare digit by digit with the label. */
+.label-number {
+  display: inline-block;
+  padding: 0 6px;
+  font-family: ui-monospace, 'Roboto Mono', monospace;
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--warning);
+  background: var(--bg);
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+}
+
+.din-npn .scan-question {
+  display: block;
+  margin-top: 4px;
+}
+
+/* The fill banner: warning first, then the number, then the cautions. */
+.label-fill-warn,
+.label-fill-from {
+  display: block;
+}
+.label-fill-warn {
+  color: var(--warning);
+}
+.label-fill-from {
+  margin-top: 6px;
+}
+.label-fill-notes {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+/* The "I've checked…" tick sits right above the Save it unlocks; until ticked it is outlined like the banner. */
 .label-check {
   margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.label-check.needs-tick {
+  border-color: var(--warning);
+}
+.label-check label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 600;
+}
+.label-check input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: var(--warning);
+}
+.label-check .hint {
+  margin: 6px 0 0 32px;
+  color: var(--warning);
 }
 
 /* Each dose time with its Remove button beside the input, below the label. */

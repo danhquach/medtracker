@@ -210,6 +210,7 @@ describe('DinNpnField', () => {
       render(<Harness />)
       await scanReturns(['80012345'])
       expect(status().textContent).toBe('Read: 8001 2345. Does this match the label?')
+      expect(screen.getByText('8001 2345').classList.contains('label-number')).toBe(true)
       expect(onChange).not.toHaveBeenCalled()
       fireEvent.click(screen.getByRole('button', { name: 'Use' }))
       expect((field() as HTMLInputElement).value).toBe('80012345')
