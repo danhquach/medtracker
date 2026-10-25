@@ -24,6 +24,8 @@ const m = vi.hoisted(() => ({
   enablePush: vi.fn(),
   setDeviceEnabled: vi.fn(() => Promise.resolve()),
   showNotification: vi.fn(() => Promise.resolve()),
+  canShare: false,
+  shareFile: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user: m.session.user }) }))
@@ -43,6 +45,7 @@ vi.mock('../../lib/supabase', () => ({
 vi.mock('../notifications/useDeviceNotificationState', () => ({
   useDeviceNotificationState: () => ({ state: m.deviceState.state, refresh: m.refresh }),
 }))
+vi.mock('../../native/shareFile', () => ({ canShareFile: () => m.canShare, shareFile: m.shareFile }))
 vi.mock('../../push/subscribe', () => ({
   enablePushOnThisDevice: m.enablePush,
   setDeviceEnabled: m.setDeviceEnabled,
@@ -61,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   asUser()
   m.deviceState.state = 'off'
+  m.canShare = false
   m.getProfile.mockResolvedValue(profile)
   m.updateProfile.mockImplementation((patch) => Promise.resolve({ ...profile, ...patch }))
   m.invoke.mockResolvedValue({ data: {}, error: null })
@@ -449,7 +453,18 @@ describe('Settings', () => {
     fireEvent.click(screen.getByRole('button', { name: /Export med plan/ }))
     await waitFor(() => expect(names).toEqual(['medtracker-plan.csv']))
     expect(create).toHaveBeenCalledTimes(1)
-    expect(revoke).toHaveBeenCalledWith('blob:x')
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:x'))
+    expect(m.shareFile).not.toHaveBeenCalled()
+    click.mockRestore()
+  })
+
+  it('shares the plan as a file in the Android app, whose WebView ignores downloads', async () => {
+    m.canShare = true
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: /Export med plan/ }))
+    await waitFor(() => expect(m.shareFile).toHaveBeenCalledWith('medtracker-plan.csv', expect.stringMatching(/^﻿name,/)))
+    expect(click).not.toHaveBeenCalled()
     click.mockRestore()
   })
 })
