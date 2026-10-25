@@ -21,10 +21,23 @@ export const ANDROID_TIP =
   "On Android: in Notifications settings, let MedTracker show on the lock screen, and set Chrome's battery use to Unrestricted so reminders aren't late."
 const APP_TIP = 'Reminders are set on this phone, so they ring on time even offline. Keep the notification volume up to hear them.'
 
-// The saved and detected zones are always valid choices, even when the list omits them (e.g. "UTC").
-function timeZones(...known: (string | null)[]): string[] {
-  const all = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : []
-  return [...new Set([...known.filter((z): z is string => !!z), ...all])]
+const ZONES: [zone: string, label: string][] = [
+  ['America/St_Johns', 'Newfoundland (NT) — St. John’s'],
+  ['America/Halifax', 'Atlantic (AT) — Halifax'],
+  ['America/Toronto', 'Eastern (ET) — Toronto, New York'],
+  ['America/Winnipeg', 'Central (CT) — Winnipeg, Chicago'],
+  ['America/Edmonton', 'Mountain (MT) — Edmonton, Denver'],
+  ['America/Phoenix', 'Arizona (MST, no daylight saving) — Phoenix'],
+  ['America/Vancouver', 'Pacific (PT) — Vancouver, Los Angeles'],
+  ['America/Anchorage', 'Alaska (AKT) — Anchorage'],
+  ['Pacific/Honolulu', 'Hawaii (HST) — Honolulu'],
+]
+
+// The saved and detected zones are always valid choices, even when the short list omits them (e.g. "Europe/London").
+function timeZones(...known: (string | null)[]): [string, string][] {
+  const listed = new Set(ZONES.map(([z]) => z))
+  const extra = [...new Set(known.filter((z): z is string => !!z && !listed.has(z)))]
+  return [...extra.map((z): [string, string] => [z, z.replace(/_/g, ' ')]), ...ZONES]
 }
 
 function deviceZone(): string | null {
@@ -49,7 +62,6 @@ export default function Settings() {
   const { user } = useSession()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [nickname, setNickname] = useState('')
-  const [zoneText, setZoneText] = useState('')
   const [saved, setSaved] = useState<SettingKey | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -75,7 +87,6 @@ export default function Settings() {
       if (!alive.current) return
       setProfile(p)
       setNickname(p.nickname ?? '')
-      setZoneText(p.time_zone)
       setProfileError(null)
     } catch (e) {
       console.error('profile load failed', e)
@@ -100,7 +111,6 @@ export default function Settings() {
       const row = await updateProfile(patch)
       if (seq === saveSeq.current) {
         setProfile(row)
-        setZoneText(row.time_zone)
         setSaved(Object.keys(patch)[0] as SettingKey)
       }
     } catch (e) {
@@ -270,27 +280,21 @@ export default function Settings() {
                   Time zone <Saved show={saved === 'time_zone'} />
                 </>
               }
-              desc="Dose times follow this time zone. Type a city to search, for example Toronto."
+              desc="Dose times follow this time zone."
               wide
             >
-              <input
+              <select
                 id="st-zone"
-                list="st-zones"
-                autoComplete="off"
-                spellCheck={false}
                 aria-describedby="st-zone-desc"
-                value={zoneText}
-                onChange={(e) => {
-                  setZoneText(e.target.value)
-                  if (zones.includes(e.target.value)) saveZone(e.target.value)
-                }}
-                onBlur={() => setZoneText(profile.time_zone)}
-              />
-              <datalist id="st-zones">
-                {zones.map((z) => (
-                  <option key={z} value={z} />
+                value={profile.time_zone}
+                onChange={(e) => saveZone(e.target.value)}
+              >
+                {zones.map(([z, label]) => (
+                  <option key={z} value={z}>
+                    {label}
+                  </option>
                 ))}
-              </datalist>
+              </select>
               {detectedZone && detectedZone !== profile.time_zone && (
                 <button type="button" onClick={() => saveZone(detectedZone)}>
                   Use this device's time zone ({detectedZone})
