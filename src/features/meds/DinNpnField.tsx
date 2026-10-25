@@ -31,7 +31,10 @@ export default function DinNpnField({
     if (latest.current !== digits) return
     if (result.status === 'match') {
       if (result.products.length === 1) onMatch(result.products[0], viaScan)
-      else setChoices(result.products)
+      else {
+        setChoices(result.products)
+        setMessage(`${result.products.length} products have this number. Pick the one on your label.`)
+      }
     } else if (result.status === 'none') setMessage(`No product found for ${digits}. Check the number or add by name.`)
     else if (result.status === 'unavailable') setMessage("Product data hasn't downloaded yet. Connect once to enable lookup.")
     else setMessage("NPN lookup isn't available yet. Add by name for now.")
@@ -55,9 +58,13 @@ export default function DinNpnField({
           autoComplete="off"
           // No maxLength: it would cut a paste before the number is picked out of it.
           onChange={(e) => set(digitsOnly(e.target.value))}
+          // A paste holding an 8-digit number replaces the field with it; any other paste lands
+          // where the caret is, and typing's digits-only rule applies.
           onPaste={(e) => {
+            const digits = numberFromPaste(e.clipboardData.getData('text'))
+            if (!digits) return
             e.preventDefault()
-            set(numberFromPaste(e.clipboardData.getData('text')))
+            set(digits)
           }}
           onFocus={() => void ensure()}
         />
@@ -68,6 +75,7 @@ export default function DinNpnField({
                 key={p.kind}
                 onClick={() => {
                   setChoices([])
+                  setMessage('')
                   onMatch(p, false)
                 }}
               >

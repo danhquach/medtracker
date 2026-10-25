@@ -82,6 +82,15 @@ describe('DinNpnField', () => {
     await vi.waitFor(() => expect(onMatch).toHaveBeenCalledWith(expect.objectContaining({ number: '80012345', kind: 'NPN' }), false))
   })
 
+  it('a paste without an 8-digit number is left to the browser', () => {
+    render(<Harness />)
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.assign(event, { clipboardData: { getData: () => '2963' } })
+    field().dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('focus starts loading the lists', () => {
     const ensure = vi.fn(() => Promise.resolve(both))
     mock.ensure = ensure
@@ -172,8 +181,10 @@ describe('DinNpnField', () => {
     type('80012345')
     const pick = await screen.findByRole('button', { name: 'DIN-HM · GLUCOSAMINE' })
     expect(screen.getByRole('button', { name: 'DIN · ADVIL' })).toBeTruthy()
+    expect(status().textContent).toBe('2 products have this number. Pick the one on your label.')
     expect(onMatch).not.toHaveBeenCalled()
     fireEvent.click(pick)
+    expect(status().textContent).toBe('')
     expect(onMatch).toHaveBeenCalledWith(expect.objectContaining({ kind: 'DIN-HM', name: 'GLUCOSAMINE' }), false)
     expect(screen.queryByRole('group', { name: 'Matching products' })).toBeNull()
   })

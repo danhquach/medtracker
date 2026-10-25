@@ -18,6 +18,15 @@ describe('findCandidates', () => {
     expect(findCandidates([{ text: lines.join('\n'), lines }])).toEqual(['02242963', '12345678'])
   })
 
+  it('ranks the number right after DIN above a lot number on the same line', () => {
+    expect(one('LOT 12345678 DIN 02242963')).toEqual(['02242963', '12345678'])
+    expect(one('DIN: 0224-2963 LOT 12345678')).toEqual(['02242963', '12345678'])
+  })
+
+  it('finds an 8-digit run next to a separate digit group', () => {
+    expect(one('1234 80012345')).toEqual(['80012345'])
+  })
+
   it('ranks a number in a DIN/NPN block above one in another block', () => {
     expect(
       findCandidates([
@@ -54,8 +63,8 @@ describe('numberFromPaste', () => {
     expect(numberFromPaste('DIN 0224 2963')).toBe('02242963')
   })
 
-  it('falls back to the digits, capped at 8', () => {
-    expect(numberFromPaste('12-34')).toBe('1234')
-    expect(numberFromPaste('1234567890')).toBe('12345678')
+  it('has nothing to keep without an 8-digit number', () => {
+    expect(numberFromPaste('12-34')).toBeUndefined()
+    expect(numberFromPaste('1234567890')).toBeUndefined()
   })
 })
