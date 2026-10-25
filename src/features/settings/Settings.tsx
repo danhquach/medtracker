@@ -14,7 +14,10 @@ import LoadError from '../auth/LoadError'
 import SetPasswordForm from '../auth/SetPasswordForm'
 import { useSession } from '../auth/useSession'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
-import { csvBlob, toCsv } from './exportCsv'
+import { canShareFile, shareFile } from '../../native/shareFile'
+import { BOM, csvBlob, toCsv } from './exportCsv'
+
+const PLAN_FILE = 'medtracker-plan.csv'
 
 const SNOOZE = [5, 10, 15, 30, 60] as const
 export const ANDROID_TIP =
@@ -153,14 +156,17 @@ export default function Settings() {
     setError(null)
     try {
       const [meds, schedules] = await Promise.all([listMeds(), listSchedules()])
-      const url = URL.createObjectURL(csvBlob(toCsv(meds, schedules)))
+      const csv = toCsv(meds, schedules)
+      if (canShareFile()) return await shareFile(PLAN_FILE, BOM + csv)
+      const url = URL.createObjectURL(csvBlob(csv))
       const a = document.createElement('a')
       a.href = url
-      a.download = 'medtracker-plan.csv'
+      a.download = PLAN_FILE
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
+      // Revoking in the same task can cancel the download in Safari and Firefox.
+      setTimeout(() => URL.revokeObjectURL(url), 0)
     } catch (e) {
       setError(msg(e, 'Could not export'))
     }

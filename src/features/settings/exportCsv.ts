@@ -28,6 +28,8 @@ export function toCsv(meds: Medication[], schedules: Schedule[]): string {
 }
 
 /** UTF-8 BOM so Excel reads accented names correctly. */
+export const BOM = '\uFEFF'
+
 export function csvBlob(csv: string): Blob {
-  return new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  return new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' })
 }
