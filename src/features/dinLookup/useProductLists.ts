@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { PRODUCT_DATA } from './dataVersion'
 import { productDataUrl, type ListState } from './lookup'
+import { dropOtherVersions, PRODUCT_CACHE } from './swRoute'
 import type { ListKind, ProductFile } from './types'
 
 type Lists = Record<ListKind, ListState>
@@ -22,7 +23,9 @@ function set(kind: ListKind, state: ListState) {
 async function cacheIfUncontrolled(url: string, res: Response) {
   if (navigator.serviceWorker?.controller || !('caches' in window)) return
   try {
-    await (await caches.open('product-data')).put(url, res)
+    const cache = await caches.open(PRODUCT_CACHE)
+    await cache.put(url, res)
+    await dropOtherVersions(cache, url)
   } catch {
     // Offline lookup just won't survive a reload until the service worker takes over.
   }

@@ -2,6 +2,8 @@
 // Typed minimally: the project compiles with the DOM lib, not WebWorker.
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { CacheFirst } from 'workbox-strategies'
+import { dropOtherVersions, isProductDataUrl, PRODUCT_CACHE } from './features/dinLookup/swRoute'
 import { handleAction, notificationFromPayload, todayUrl, type NotificationData } from './push/swLogic'
 import type { PushPayload } from '../supabase/functions/_shared/reminderRun'
 
@@ -22,6 +24,14 @@ cleanupOutdatedCaches()
 precacheAndRoute((self as unknown as { __WB_MANIFEST: { url: string; revision: string | null }[] }).__WB_MANIFEST)
 // SPA routes (/today, /meds/…) aren't files: serve the cached app shell so a reload works offline.
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')))
+// DIN/NPN lists: not precached (too big for first load). Kept after the first lookup, for offline use.
+registerRoute(
+  ({ url }) => isProductDataUrl(url, sw.registration.scope),
+  new CacheFirst({
+    cacheName: PRODUCT_CACHE,
+    plugins: [{ cacheDidUpdate: async ({ cacheName, request }) => dropOtherVersions(await caches.open(cacheName), request.url) }],
+  }),
+)
 
 sw.addEventListener('install', () => void sw.skipWaiting())
 
