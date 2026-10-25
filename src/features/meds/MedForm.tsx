@@ -168,13 +168,15 @@ export default function MedForm({
         <Notice tone="warning">
           {labelFill && (
             <>
-              ⚠️{' '}
-              <strong>
-                Filled from {labelFill.kind} {labelFill.number}. Please check every detail against your label before saving.
-              </strong>{' '}
-              The number or the product details may be wrong or out of date.
-              {labelFill.discontinued && ' This product is marked discontinued by Health Canada.'}
-              {labelFill.viaScan && ' The number was read by the camera, so compare the digits with the label too.'}
+              <strong className="label-fill-warn">⚠️ Check every detail against your label before saving.</strong>
+              <span className="label-fill-from">
+                Filled from {labelFill.kind} <span className="label-number">{labelFill.number}</span>
+              </span>
+              <ul className="label-fill-notes">
+                <li>The number or the product details may be wrong or out of date.</li>
+                {labelFill.discontinued && <li>This product is marked discontinued by Health Canada.</li>}
+                {labelFill.viaScan && <li>The number was read by the camera, so compare the digits with the label too.</li>}
+              </ul>
             </>
           )}
         </Notice>
@@ -277,16 +279,15 @@ export default function MedForm({
           </p>
         )}
         {labelFill && (
-          <div className="label-check">
+          <div className={needsTick ? 'label-check needs-tick' : 'label-check'}>
             <label>
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={(e) => setChecked(e.target.checked)}
                 aria-describedby={needsTick ? id('tick-hint') : undefined}
-                style={{ display: 'inline', width: 'auto' }}
-              />{' '}
-              I've checked these details against the label.
+              />
+              <span>I've checked these details against the label.</span>
             </label>
             {needsTick && (
               <p id={id('tick-hint')} className="muted hint">

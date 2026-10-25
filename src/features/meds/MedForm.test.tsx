@@ -26,7 +26,7 @@ const ADVIL: ProductRow = { name: 'ADVIL', form: 'tablet', strength: '200 mg', d
 const GLUCO: ProductRow = { name: 'GLUCOSAMINE', form: 'capsule', strength: '500 mg', discontinued: true }
 const lists: Record<ListKind, ListState> = { din: ready({ '02242963': ADVIL }), npn: ready({ '80012345': GLUCO }) }
 vi.mock('../dinLookup/dataVersion', () => ({ PRODUCT_DATA: { generatedAt: '2026-10-25', lists: ['din', 'npn'] } }))
-vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => Promise.resolve(lists) }) }))
+vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ lists, ensure: () => Promise.resolve(lists) }) }))
 vi.mock('../../native/labelScan', () => ({ canScanLabel: () => true, scanLabel: () => Promise.resolve(['02242963']) }))
 
 import MedForm from './MedForm'
@@ -243,10 +243,14 @@ describe('MedForm', () => {
     const TICK = "I've checked these details against the label."
     const value = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value
     const saveButton = () => screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
-    const banner = () => screen.queryByText(/^Filled from/)?.closest('[role="status"]')
+    const WARN = '⚠️ Check every detail against your label before saving.'
+    const banner = () => screen.queryByText(WARN)?.closest('[role="status"]') as HTMLElement | null | undefined
+    const notes = () => within(banner()!).getAllByRole('listitem').map((li) => li.textContent)
+    const filledFrom = (number: string) =>
+      waitFor(() => expect(banner()?.textContent).toMatch(new RegExp(`Filled from \\S+ ${number}`)))
     const fill = async (number = '02242963') => {
       type(DIN, number)
-      await screen.findByText(new RegExp(`Filled from \\S+ ${number}`))
+      await filledFrom(number)
     }
 
     it('a match fills name, strength and form, opens More details and shows the banner with the number', async () => {
@@ -256,11 +260,25 @@ describe('MedForm', () => {
       expect(value('Strength')).toBe('200 mg')
       expect(value('Form')).toBe('tablet')
       expect((screen.getByText('More details').closest('details') as HTMLDetailsElement).open).toBe(true)
-      expect(banner()?.textContent).toBe(
-        '⚠️ Filled from DIN 02242963. Please check every detail against your label before saving. ' +
-          'The number or the product details may be wrong or out of date.',
-      )
+      expect(banner()?.textContent).toContain('Filled from DIN 02242963')
+      expect(notes()).toEqual(['The number or the product details may be wrong or out of date.'])
       expect(screen.queryByText(/discontinued/)).toBeNull()
+    })
+
+    it('the banner leads with the warning and highlights the number', async () => {
+      renderForm()
+      await fill()
+      expect(banner()?.firstElementChild?.textContent).toBe(WARN)
+      expect(within(banner()!).getByText('02242963').classList.contains('label-number')).toBe(true)
+    })
+
+    it('the tick row stands out until ticked', async () => {
+      renderForm()
+      await fill()
+      const row = screen.getByLabelText(TICK).closest('.label-check')!
+      expect(row.classList.contains('needs-tick')).toBe(true)
+      fireEvent.click(screen.getByLabelText(TICK))
+      expect(row.classList.contains('needs-tick')).toBe(false)
     })
 
     it('filled fields carry the from-label tag until edited', async () => {
@@ -347,18 +365,19 @@ describe('MedForm', () => {
       renderForm()
       fireEvent.click(screen.getByRole('button', { name: '📷 Scan' }))
       fireEvent.click(await screen.findByRole('button', { name: 'Use' }))
-      await screen.findByText(/Filled from DIN 02242963/)
-      expect(banner()?.textContent).toMatch(/out of date\. The number was read by the camera, so compare the digits with the label too\.$/)
+      await filledFrom('02242963')
+      expect(notes().at(-1)).toBe('The number was read by the camera, so compare the digits with the label too.')
       type(DIN, '0224296')
       type(DIN, '02242963')
-      await screen.findByText(/Filled from DIN 02242963/)
+      await filledFrom('02242963')
       expect(banner()?.textContent).not.toMatch(/camera/)
     })
 
     it('discontinued product adds the discontinued sentence', async () => {
       renderForm()
       await fill('80012345')
-      expect(banner()?.textContent).toMatch(/Filled from NPN 80012345\..*This product is marked discontinued by Health Canada\.$/)
+      expect(banner()?.textContent).toContain('Filled from NPN 80012345')
+      expect(notes().at(-1)).toBe('This product is marked discontinued by Health Canada.')
     })
 
     it('a fill sends nothing to remote name search', async () => {

@@ -12,6 +12,7 @@ const GLUCO: ProductRow = { name: 'GLUCOSAMINE', form: 'capsule', strength: '500
 const mock = vi.hoisted(() => ({
   shipped: ['din', 'npn'] as ListKind[],
   ensure: (() => Promise.resolve({})) as () => Promise<unknown>,
+  lists: { din: { status: 'ready' }, npn: { status: 'ready' } } as Record<string, { status: string }>,
 }))
 vi.mock('../dinLookup/dataVersion', () => ({
   PRODUCT_DATA: {
@@ -21,7 +22,7 @@ vi.mock('../dinLookup/dataVersion', () => ({
     },
   },
 }))
-vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => mock.ensure() }) }))
+vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ lists: mock.lists, ensure: () => mock.ensure() }) }))
 const scanMock = vi.hoisted(() => ({ can: true, scan: vi.fn<() => Promise<string[] | 'cancelled' | 'no-camera'>>() }))
 vi.mock('../../native/labelScan', () => ({ canScanLabel: () => scanMock.can, scanLabel: () => scanMock.scan() }))
 
@@ -56,6 +57,7 @@ beforeEach(() => {
   scanMock.scan.mockReset()
   mock.shipped = ['din', 'npn']
   mock.ensure = () => Promise.resolve(both)
+  mock.lists = { din: { status: 'ready' }, npn: { status: 'ready' } }
 })
 
 describe('DinNpnField', () => {
@@ -64,6 +66,21 @@ describe('DinNpnField', () => {
     expect(field().getAttribute('inputmode')).toBe('numeric')
     expect(field().hasAttribute('maxlength')).toBe(false)
     expect(screen.getByText('or search by name')).toBeTruthy()
+  })
+
+  it('shows a spinner with "Loading product data…" while the lists download, then the result', async () => {
+    let finish: (lists: Lists) => void = () => {}
+    mock.ensure = () => new Promise((resolve) => (finish = resolve))
+    mock.lists = { din: { status: 'loading' }, npn: { status: 'idle' } }
+    render(<Harness />)
+    type('99999999')
+    expect(status().textContent).toBe('Loading product data…')
+    expect(status().getAttribute('aria-busy')).toBe('true')
+    expect(status().querySelector('.spinner')).toBeTruthy()
+    await act(async () => finish(both))
+    expect(status().textContent).toBe('No product found for 99999999. Check the number or add by name.')
+    expect(status().hasAttribute('aria-busy')).toBe(false)
+    expect(status().querySelector('.spinner')).toBeNull()
   })
 
   it('typing keeps only digits, capped at 8', () => {
@@ -206,10 +223,23 @@ describe('DinNpnField', () => {
       await act(async () => fireEvent.click(scanButton()))
     }
 
+    it('shows a spinner with "Reading the label…" while a scan runs', async () => {
+      let finish: (r: string[]) => void = () => {}
+      scanMock.scan.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+      render(<Harness />)
+      fireEvent.click(scanButton())
+      expect(status().textContent).toBe('Reading the label…')
+      expect(status().querySelector('.spinner')).toBeTruthy()
+      await act(async () => finish(['80012345']))
+      expect(status().textContent).toBe('Read: 8001 2345. Does this match the label?')
+      expect(status().querySelector('.spinner')).toBeNull()
+    })
+
     it('one number asks to confirm; Use fills the field and looks it up with viaScan true', async () => {
       render(<Harness />)
       await scanReturns(['80012345'])
       expect(status().textContent).toBe('Read: 8001 2345. Does this match the label?')
+      expect(screen.getByText('8001 2345').classList.contains('label-number')).toBe(true)
       expect(onChange).not.toHaveBeenCalled()
       fireEvent.click(screen.getByRole('button', { name: 'Use' }))
       expect((field() as HTMLInputElement).value).toBe('80012345')

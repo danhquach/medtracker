@@ -7,6 +7,7 @@ import SetPasswordForm from '../auth/SetPasswordForm'
 import { useSession } from '../auth/useSession'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { Notice } from '../../components/layout'
+import AboutSection from './AboutSection'
 import AccountSection from './AccountSection'
 import DangerZone from './DangerZone'
 import MedicationsSection from './MedicationsSection'
@@ -78,6 +79,7 @@ export default function Settings() {
       <ReminderStatus state={device.state} zone={profile?.time_zone ?? null} />
       <RemindersSection {...section} device={device} onNotice={setNotice} />
       <MedicationsSection {...section} />
+      <AboutSection />
       <AccountSection {...section} user={user} nickname={nickname} onNicknameChange={setNickname} />
       <DangerZone onError={setError} />
     </main>
