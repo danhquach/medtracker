@@ -95,13 +95,16 @@ describe('useProductLists', () => {
   it('uncontrolled page writes the response into the product-data cache', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ok()))
     vi.stubGlobal('navigator', { ...navigator, serviceWorker: { controller: null } })
+    const old = { url: productDataUrl('din').replace(/\?v=.*/, '?v=2000-01-01') } as Request
     const put = vi.fn(async () => {})
-    const open = vi.fn(async () => ({ put }))
+    const del = vi.fn(async () => true)
+    const open = vi.fn(async () => ({ put, keys: async () => [old], delete: del }))
     vi.stubGlobal('caches', { open })
     const { result } = renderHook(() => useProductLists())
     await act(async () => { await result.current.ensure() })
     expect(open).toHaveBeenCalledWith('product-data')
     expect(put).toHaveBeenCalledWith(productDataUrl('din'), expect.any(Response))
+    expect(del).toHaveBeenCalledWith(old)
     expect(result.current.lists.din.status).toBe('ready')
   })
 
