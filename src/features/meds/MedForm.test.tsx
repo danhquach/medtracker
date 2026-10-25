@@ -26,7 +26,7 @@ const ADVIL: ProductRow = { name: 'ADVIL', form: 'tablet', strength: '200 mg', d
 const GLUCO: ProductRow = { name: 'GLUCOSAMINE', form: 'capsule', strength: '500 mg', discontinued: true }
 const lists: Record<ListKind, ListState> = { din: ready({ '02242963': ADVIL }), npn: ready({ '80012345': GLUCO }) }
 vi.mock('../dinLookup/dataVersion', () => ({ PRODUCT_DATA: { generatedAt: '2026-10-25', lists: ['din', 'npn'] } }))
-vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => Promise.resolve(lists) }) }))
+vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ lists, ensure: () => Promise.resolve(lists) }) }))
 vi.mock('../../native/labelScan', () => ({ canScanLabel: () => true, scanLabel: () => Promise.resolve(['02242963']) }))
 
 import MedForm from './MedForm'

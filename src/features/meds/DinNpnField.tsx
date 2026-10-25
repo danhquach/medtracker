@@ -22,8 +22,10 @@ export default function DinNpnField({
   onChange: (digits: string) => void
   onMatch: (p: Product, viaScan: boolean) => void
 }) {
-  const { ensure } = useProductLists()
+  const { lists, ensure } = useProductLists()
   const [message, setMessage] = useState<ReactNode>('')
+  // A lookup waiting for the product lists to download (first use only).
+  const [loading, setLoading] = useState(false)
   const [choices, setChoices] = useState<Product[]>([])
   // Numbers read from a label photo, waiting for the user to confirm one.
   const [scanned, setScanned] = useState<string[] | null>(null)
@@ -35,8 +37,10 @@ export default function DinNpnField({
 
   // The one lookup path; a label scan (MT-105) calls it too.
   async function runLookup(digits: string, viaScan: boolean) {
+    if (PRODUCT_DATA.lists.some((kind) => lists[kind].status !== 'ready')) setLoading(true)
     const result = lookupProduct(digits, await ensure(), PRODUCT_DATA.lists)
     if (latest.current !== digits) return
+    setLoading(false)
     if (result.status === 'match') {
       if (result.products.length === 1) onMatch(result.products[0], viaScan)
       else {
@@ -51,6 +55,7 @@ export default function DinNpnField({
   function set(digits: string, scan = false) {
     latest.current = digits
     viaScan.current = scan
+    setLoading(false)
     setMessage('')
     setChoices([])
     setScanned(null)
@@ -80,6 +85,9 @@ export default function DinNpnField({
       )
     else setMessage('Which number is on the label next to DIN/NPN?')
   }
+
+  // A scan takes a few seconds to read the photo; without this the screen looks frozen.
+  const waitingFor = scanning ? 'Reading the label…' : loading ? 'Loading product data…' : ''
 
   return (
     <>
@@ -143,8 +151,15 @@ export default function DinNpnField({
           </div>
         )}
         {/* Always in the page so screen readers announce the message when it appears. */}
-        <p role="status" className="muted hint">
-          {message}
+        <p role="status" className="muted hint" aria-busy={waitingFor ? true : undefined}>
+          {waitingFor ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              {waitingFor}
+            </>
+          ) : (
+            message
+          )}
         </p>
       </div>
       <p className="divider-text">or search by name</p>
