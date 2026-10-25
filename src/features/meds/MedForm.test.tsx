@@ -27,6 +27,7 @@ const GLUCO: ProductRow = { name: 'GLUCOSAMINE', form: 'capsule', strength: '500
 const lists: Record<ListKind, ListState> = { din: ready({ '02242963': ADVIL }), npn: ready({ '80012345': GLUCO }) }
 vi.mock('../dinLookup/dataVersion', () => ({ PRODUCT_DATA: { generatedAt: '2026-10-25', lists: ['din', 'npn'] } }))
 vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => Promise.resolve(lists) }) }))
+vi.mock('../../native/labelScan', () => ({ canScanLabel: () => true, scanLabel: () => Promise.resolve(['02242963']) }))
 
 import MedForm from './MedForm'
 
@@ -340,6 +341,18 @@ describe('MedForm', () => {
       expect(await screen.findByText('No product found for 02242964. Check the number or add by name.')).toBeTruthy()
       expect(value('Name')).toBe('')
       expect(screen.queryByLabelText(TICK)).toBeNull()
+    })
+
+    it('a scanned number adds the camera sentence; a typed one does not (MT-105)', async () => {
+      renderForm()
+      fireEvent.click(screen.getByRole('button', { name: '📷 Scan' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use' }))
+      await screen.findByText(/Filled from DIN 02242963/)
+      expect(banner()?.textContent).toMatch(/out of date\. The number was read by the camera, so compare the digits with the label too\.$/)
+      type(DIN, '0224296')
+      type(DIN, '02242963')
+      await screen.findByText(/Filled from DIN 02242963/)
+      expect(banner()?.textContent).not.toMatch(/camera/)
     })
 
     it('discontinued product adds the discontinued sentence', async () => {

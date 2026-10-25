@@ -874,6 +874,16 @@ fieldset {
   margin-top: 8px;
 }
 
+/* The Android app's Scan button sits beside the number, level with the input. */
+.din-npn-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.din-npn-input > .field {
+  flex: 1;
+}
+
 /* "or search by name" between two rules. */
 .divider-text {
   display: flex;
