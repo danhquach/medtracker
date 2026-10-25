@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { markEmailLinkShown, pendingEmailLink, type EmailLink } from './emailLink'
+import { Button } from '../../components/Button'
 
 export default function EmailLinkNotice({ email, guest = false }: { email?: string; guest?: boolean }) {
   const [link, setLink] = useState<EmailLink>(pendingEmailLink)
@@ -9,9 +10,9 @@ export default function EmailLinkNotice({ email, guest = false }: { email?: stri
 
   if (!link) return null
   const dismiss = (
-    <button type="button" className="link" onClick={() => setLink(null)}>
+    <Button variant="link" onClick={() => setLink(null)}>
       Dismiss
-    </button>
+    </Button>
   )
   // Only with a signed-in email: the link's hash alone is not proof (anyone can craft one).
   if (link === 'verified')

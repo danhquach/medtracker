@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { refillState } from '../../../supabase/functions/_shared/refill'
 import type { Medication, Schedule } from '../../lib/types'
 import { scheduleSummary, stockUnit } from './summary'
+import { Button } from '../../components/Button'
 
 export default function MedCard({
   med,
@@ -63,40 +64,40 @@ export default function MedCard({
       )}
       <div className="row card-actions">
         {logFirst ? (
-          <button type="button" onClick={onLogDose}>
+          <Button onClick={onLogDose}>
             Log dose
-          </button>
+          </Button>
         ) : (
-          <button type="button" onClick={onEdit}>
+          <Button onClick={onEdit}>
             Edit
-          </button>
+          </Button>
         )}
         <details className="menu" ref={menu}>
           <summary aria-label={`More actions for ${med.name}`}>More</summary>
           <div className="menu-items">
             {logFirst && (
-              <button type="button" onClick={choose(onEdit)}>
+              <Button onClick={choose(onEdit)}>
                 Edit
-              </button>
+              </Button>
             )}
-            <button type="button" onClick={choose(() => onPause(!med.paused))}>
+            <Button onClick={choose(() => onPause(!med.paused))}>
               {med.paused ? 'Resume' : 'Pause'}
-            </button>
-            <button type="button" onClick={choose(() => setRefilling(true))}>
+            </Button>
+            <Button onClick={choose(() => setRefilling(true))}>
               Refilled
-            </button>
-            <button type="button" onClick={choose(onHistory)}>
+            </Button>
+            <Button onClick={choose(onHistory)}>
               History
-            </button>
+            </Button>
             {canStop && (
-              <button type="button" onClick={choose(onStop)}>
+              <Button onClick={choose(onStop)}>
                 Stop…
-              </button>
+              </Button>
             )}
             <hr />
-            <button type="button" className="danger" onClick={choose(onDelete)}>
+            <Button variant="danger" onClick={choose(onDelete)}>
               Delete…
-            </button>
+            </Button>
           </div>
         </details>
       </div>
@@ -120,12 +121,12 @@ export default function MedCard({
             value={qty}
             onChange={(e) => setQty(e.target.value)}
           />
-          <button type="submit" className="primary" disabled={!(qtyNum > 0)}>
+          <Button type="submit" variant="primary" disabled={!(qtyNum > 0)}>
             Add
-          </button>
-          <button type="button" onClick={() => setRefilling(false)}>
+          </Button>
+          <Button onClick={() => setRefilling(false)}>
             Cancel
-          </button>
+          </Button>
         </form>
       )}
     </li>

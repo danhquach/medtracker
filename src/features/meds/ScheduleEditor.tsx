@@ -1,6 +1,7 @@
 import type { Schedule } from '../../lib/types'
 import { FieldError } from './FieldError'
 import { invalidProps, type FieldErrors, type ScheduleDraft } from './validate'
+import { Button } from '../../components/Button'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const KINDS: { value: Schedule['kind']; label: string }[] = [
@@ -59,14 +60,13 @@ export default function ScheduleEditor({
               const iso = i + 1
               const on = value.weekdays.includes(iso)
               return (
-                <button
+                <Button
                   key={d}
-                  type="button"
                   aria-pressed={on}
                   onClick={() => set({ weekdays: on ? value.weekdays.filter((x) => x !== iso) : [...value.weekdays, iso] })}
                 >
                   {d}
-                </button>
+                </Button>
               )
             })}
           </div>
@@ -102,17 +102,17 @@ export default function ScheduleEditor({
               {...invalidProps(errors.times, id('times'))}
             />
             {value.times.length > 1 && (
-              <button type="button" aria-label={`Remove time ${i + 1}`} onClick={() => set({ times: value.times.filter((_, j) => j !== i) })}>
+              <Button aria-label={`Remove time ${i + 1}`} onClick={() => set({ times: value.times.filter((_, j) => j !== i) })}>
                 ✕
-              </button>
+              </Button>
             )}
           </div>
         ))}
       {timed && <FieldError id={id('times')} message={errors.times} />}
       {timed && (
-        <button type="button" onClick={() => set({ times: [...value.times, ''] })}>
+        <Button onClick={() => set({ times: [...value.times, ''] })}>
           Add time
-        </button>
+        </Button>
       )}
 
       <details open={value.kind === 'interval' || !!value.end_date || undefined}>
@@ -141,9 +141,9 @@ export default function ScheduleEditor({
         </div>
       </details>
       {onRemove && (
-        <button type="button" onClick={onRemove}>
+        <Button onClick={onRemove}>
           Remove schedule
-        </button>
+        </Button>
       )}
     </fieldset>
   )

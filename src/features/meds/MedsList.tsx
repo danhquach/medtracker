@@ -12,6 +12,7 @@ import { nowTimeIn, todayIn } from '../today/dayRange'
 import MedCard from './MedCard'
 import MedForm from './MedForm'
 import { isStopped, nextDoseText } from './summary'
+import { Button } from '../../components/Button'
 
 export default function MedsList() {
   const profile = useProfile()
@@ -147,9 +148,9 @@ export default function MedsList() {
           />
         ))}
       </ul>
-      <button type="button" className="primary fab" onClick={() => navigate('/meds/new')}>
+      <Button variant="fab" onClick={() => navigate('/meds/new')}>
         + Add
-      </button>
+      </Button>
     </main>
   )
 }

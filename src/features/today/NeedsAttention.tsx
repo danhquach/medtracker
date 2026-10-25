@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { DeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { readGuestBannerDismissedAt, shouldShowGuestBanner, writeGuestBannerDismissedAt } from '../auth/guestBanner.ts'
+import { Button } from '../../components/Button'
 
 export interface LowMed {
   id: string
@@ -38,8 +39,7 @@ export default function NeedsAttention({
             <p>Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
             <div className="row">
               <Link to="/settings?account=create">Create profile</Link>
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   const now = Date.now()
                   writeGuestBannerDismissedAt(now)
@@ -47,7 +47,7 @@ export default function NeedsAttention({
                 }}
               >
                 Not now
-              </button>
+              </Button>
             </div>
           </li>
         )}
@@ -55,9 +55,9 @@ export default function NeedsAttention({
           <li>
             <p>Notifications are off on this device</p>
             {notifications === 'off' && (
-              <button type="button" onClick={onTurnOn}>
+              <Button onClick={onTurnOn}>
                 Turn on
-              </button>
+              </Button>
             )}
             {notifications === 'denied' && <p>Notifications are blocked. Enable them for this site in your browser settings.</p>}
             {enableError && <p role="alert">{enableError}</p>}

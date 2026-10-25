@@ -1,3 +1,5 @@
+import { Button } from '../../components/Button'
+
 export default function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="stack">
@@ -6,9 +8,9 @@ export default function LoadError({ message, onRetry }: { message: string; onRet
         <br />
         <span className="muted">{message}</span>
       </p>
-      <button type="button" onClick={onRetry}>
+      <Button onClick={onRetry}>
         Retry
-      </button>
+      </Button>
     </div>
   )
 }

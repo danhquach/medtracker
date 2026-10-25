@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { changes } from '../../components/syncCopy'
 import { pendingCount } from '../../data/offline/sync'
 import { createProfile, GUEST_LEFT_BEHIND, signIn, signUp } from './auth'
+import { Button } from '../../components/Button'
 
 export type CredentialsMode = 'signup' | 'signin' | 'upgrade'
 
@@ -58,9 +59,9 @@ export default function CredentialsForm({
       <div className="stack">
         <p role="status">{notice}</p>
         {back && (
-          <button type="button" onClick={back}>
+          <Button onClick={back}>
             {onSignIn ? 'Back to sign in' : 'Back'}
-          </button>
+          </Button>
         )}
       </div>
     )
@@ -97,13 +98,13 @@ export default function CredentialsForm({
       )}
       {error && <p role="alert">{error}</p>}
       <div className="row">
-        <button type="submit" className="primary" disabled={busy}>
+        <Button type="submit" variant="primary" disabled={busy}>
           {confirmed ? 'Continue' : LABEL[mode]}
-        </button>
+        </Button>
         {onCancel && (
-          <button type="button" onClick={onCancel}>
+          <Button onClick={onCancel}>
             Back
-          </button>
+          </Button>
         )}
       </div>
     </form>

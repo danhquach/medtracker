@@ -9,6 +9,7 @@ import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
 import LoadError from '../auth/LoadError'
 import { useProfileState } from '../auth/useProfile'
 import { addDays, localDayRange, timeLabel, todayIn } from '../today/dayRange'
+import { Button } from '../../components/Button'
 
 const STATUS: Record<DoseStatus, { Icon: typeof CheckIcon; label: string }> = {
   taken: { Icon: CheckIcon, label: 'Taken' },
@@ -138,13 +139,13 @@ function MonthView({ meds, tz, today }: { meds: Medication[]; tz: string; today:
   return (
     <>
       <div className="month-nav">
-        <button type="button" aria-label="Previous month" onClick={() => go(-1)}>
+        <Button aria-label="Previous month" onClick={() => go(-1)}>
           ‹
-        </button>
+        </Button>
         <h2 id="month-title">{title}</h2>
-        <button type="button" aria-label="Next month" disabled={month >= current} onClick={() => go(1)}>
+        <Button aria-label="Next month" disabled={month >= current} onClick={() => go(1)}>
           ›
-        </button>
+        </Button>
       </div>
       {error && <p role="alert">{error}</p>}
       {!error && !doses && <Loading />}
@@ -173,8 +174,7 @@ function MonthView({ meds, tz, today }: { meds: Medication[]; tz: string; today:
                     : 'no doses'
                   return (
                     <td key={i}>
-                      <button
-                        type="button"
+                      <Button
                         className={d === today ? 'month-day is-today' : 'month-day'}
                         aria-label={`${dayHeading(d)}: ${summary}`}
                         aria-pressed={d === picked}
@@ -192,7 +192,7 @@ function MonthView({ meds, tz, today }: { meds: Medication[]; tz: string; today:
                             )
                           })}
                         </span>
-                      </button>
+                      </Button>
                     </td>
                   )
                 })}
@@ -329,15 +329,14 @@ export default function History() {
                   </div>
                   <div className="row" role="group" aria-label={`Change dose ${when}`}>
                     {CHOICES.map((c) => (
-                      <button
+                      <Button
                         key={c.status}
-                        type="button"
                         aria-pressed={c.status === 'pending' ? shown === 'pending' || shown === 'missed' : shown === c.status}
                         disabled={busy === d.id}
                         onClick={() => void change(d, c.status)}
                       >
                         {c.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </li>
@@ -362,9 +361,9 @@ export default function History() {
         <>
           <div className="row" role="group" aria-label="View">
             {(['week', 'month'] as const).map((v) => (
-              <button key={v} type="button" aria-pressed={view === v} onClick={() => pickView(v)}>
+              <Button key={v} aria-pressed={view === v} onClick={() => pickView(v)}>
                 {v === 'week' ? 'Week' : 'Month'}
-              </button>
+              </Button>
             ))}
           </div>
           {view === 'month' ? (
