@@ -22,6 +22,8 @@ vi.mock('../dinLookup/dataVersion', () => ({
   },
 }))
 vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => mock.ensure() }) }))
+const scanMock = vi.hoisted(() => ({ can: true, scan: vi.fn<() => Promise<string[] | 'cancelled' | 'no-camera'>>() }))
+vi.mock('../../native/labelScan', () => ({ canScanLabel: () => scanMock.can, scanLabel: () => scanMock.scan() }))
 
 import DinNpnField from './DinNpnField'
 
@@ -50,6 +52,8 @@ const status = () => screen.getByRole('status')
 beforeEach(() => {
   onMatch.mockClear()
   onChange.mockClear()
+  scanMock.can = true
+  scanMock.scan.mockReset()
   mock.shipped = ['din', 'npn']
   mock.ensure = () => Promise.resolve(both)
 })
@@ -189,8 +193,81 @@ describe('DinNpnField', () => {
     expect(screen.queryByRole('group', { name: 'Matching products' })).toBeNull()
   })
 
-  it('has no Scan button', () => {
+  it('has no Scan button without the scanner (web, older app installs)', () => {
+    scanMock.can = false
     render(<Harness />)
     expect(screen.queryByRole('button', { name: /scan/i })).toBeNull()
+  })
+
+  describe('label scan (MT-105)', () => {
+    const scanButton = () => screen.getByRole('button', { name: '📷 Scan' })
+    const scanReturns = async (result: string[] | 'cancelled' | 'no-camera') => {
+      scanMock.scan.mockResolvedValueOnce(result)
+      await act(async () => fireEvent.click(scanButton()))
+    }
+
+    it('one number asks to confirm; Use fills the field and looks it up with viaScan true', async () => {
+      render(<Harness />)
+      await scanReturns(['80012345'])
+      expect(status().textContent).toBe('Read: 8001 2345. Does this match the label?')
+      expect(onChange).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Use' }))
+      expect((field() as HTMLInputElement).value).toBe('80012345')
+      await vi.waitFor(() => expect(onMatch).toHaveBeenCalledWith(expect.objectContaining({ number: '80012345' }), true))
+      expect(screen.queryByRole('group', { name: 'Number from the photo' })).toBeNull()
+    })
+
+    it('several numbers ask which one is next to DIN/NPN', async () => {
+      render(<Harness />)
+      await scanReturns(['02242963', '12345678'])
+      expect(status().textContent).toBe('Which number is on the label next to DIN/NPN?')
+      expect(screen.getByRole('button', { name: '1234 5678' })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '0224 2963' }))
+      await vi.waitFor(() => expect(onMatch).toHaveBeenCalledWith(expect.objectContaining({ number: '02242963' }), true))
+    })
+
+    it('no number found offers Retake, which scans again', async () => {
+      render(<Harness />)
+      await scanReturns([])
+      expect(status().textContent).toBe("Couldn't find an 8-digit DIN/NPN in the photo.")
+      expect(screen.queryByRole('button', { name: 'Use' })).toBeNull()
+      scanMock.scan.mockResolvedValueOnce(['80012345'])
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retake' })))
+      expect(scanMock.scan).toHaveBeenCalledTimes(2)
+      expect(status().textContent).toBe('Read: 8001 2345. Does this match the label?')
+    })
+
+    it('no camera app says to type the number', async () => {
+      render(<Harness />)
+      await scanReturns('no-camera')
+      expect(status().textContent).toBe("Couldn't open the camera. Type the number instead.")
+      expect(screen.queryByRole('button', { name: 'Retake' })).toBeNull()
+    })
+
+    it('closing the camera without a photo changes nothing', async () => {
+      render(<Harness />)
+      type('0224')
+      await scanReturns('cancelled')
+      expect(status().textContent).toBe('')
+      expect((field() as HTMLInputElement).value).toBe('0224')
+    })
+
+    it('typing after a scan drops the scanned choices', async () => {
+      render(<Harness />)
+      await scanReturns(['80012345'])
+      type('1')
+      expect(screen.queryByRole('button', { name: 'Use' })).toBeNull()
+      expect(status().textContent).toBe('')
+    })
+
+    it('a product picked from several after a scan keeps viaScan true', async () => {
+      mock.ensure = () =>
+        Promise.resolve({ din: ready({ '80012345': ADVIL }), npn: ready({ '80012345': { ...GLUCO, hm: true } }) })
+      render(<Harness />)
+      await scanReturns(['80012345'])
+      fireEvent.click(screen.getByRole('button', { name: 'Use' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'DIN · ADVIL' }))
+      expect(onMatch).toHaveBeenCalledWith(expect.objectContaining({ kind: 'DIN' }), true)
+    })
   })
 })

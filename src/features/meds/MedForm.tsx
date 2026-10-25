@@ -33,7 +33,11 @@ const newSchedule = (): ScheduleDraft => ({
 })
 
 /** A form filled from a DIN/NPN match, with the values as filled. */
-type LabelFill = Pick<Product, 'number' | 'kind' | 'discontinued'> & { filled: { name: string; strength: string; form: string } }
+type LabelFill = Pick<Product, 'number' | 'kind' | 'discontinued'> & {
+  filled: { name: string; strength: string; form: string }
+  /** The number was read from a label photo (MT-105). */
+  viaScan: boolean
+}
 
 /** This schedule's errors with the `<index>.` prefix stripped. */
 const scheduleErrors = (errors: FieldErrors, i: number): FieldErrors =>
@@ -111,13 +115,13 @@ export default function MedForm({
   }
 
   // A new match overwrites name, strength and form even if hand-edited; safe because the tick resets.
-  function fillFrom(p: Product) {
+  function fillFrom(p: Product, viaScan: boolean) {
     setName(p.name)
     setStrength(p.strength)
     setForm(p.form)
     setChips([])
     if (moreRef.current) moreRef.current.open = true
-    setLabelFill({ number: p.number, kind: p.kind, discontinued: p.discontinued, filled: { name: p.name, strength: p.strength, form: p.form } })
+    setLabelFill({ number: p.number, kind: p.kind, discontinued: p.discontinued, filled: { name: p.name, strength: p.strength, form: p.form }, viaScan })
     setChecked(false)
   }
 
@@ -170,6 +174,7 @@ export default function MedForm({
               </strong>{' '}
               The number or the product details may be wrong or out of date.
               {labelFill.discontinued && ' This product is marked discontinued by Health Canada.'}
+              {labelFill.viaScan && ' The number was read by the camera, so compare the digits with the label too.'}
             </>
           )}
         </Notice>
