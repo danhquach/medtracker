@@ -3,6 +3,7 @@ import { changes } from '../../components/syncCopy'
 import { pendingCount } from '../../data/offline/sync'
 import { createProfile, GUEST_LEFT_BEHIND, signIn, signUp } from './auth'
 import { Button } from '../../components/Button'
+import { Notice } from '../../components/layout'
 import { TextField } from '../../components/Field'
 import { emailError, PASSWORD_RULE, passwordError } from './validate'
 
@@ -69,7 +70,7 @@ export default function CredentialsForm({
     const back = onSignIn ?? onCancel
     return (
       <div className="stack">
-        <p role="status">{notice}</p>
+        <Notice>{notice}</Notice>
         {back && (
           <Button onClick={back}>
             {onSignIn ? 'Back to sign in' : 'Back'}
@@ -102,12 +103,12 @@ export default function CredentialsForm({
         error={errors.password}
       />
       {confirmed && (
-        <p role="alert">
+        <Notice tone="error">
           {GUEST_LEFT_BEHIND}
           {unsynced > 0 && ` ${changes(unsynced)} made offline ${unsynced === 1 ? "hasn't" : "haven't"} synced and will be lost.`}
-        </p>
+        </Notice>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       <div className="row">
         <Button type="submit" variant="primary" disabled={busy}>
           {confirmed ? 'Continue' : LABEL[mode]}

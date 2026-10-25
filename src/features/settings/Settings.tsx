@@ -18,6 +18,7 @@ import { canShareFile, shareFile } from '../../native/shareFile'
 import { BOM, csvBlob, toCsv } from './exportCsv'
 import { Button } from '../../components/Button'
 import { TextField } from '../../components/Field'
+import { Notice, Row, RowGroup } from '../../components/layout'
 
 const PLAN_FILE = 'medtracker-plan.csv'
 
@@ -217,8 +218,8 @@ export default function Settings() {
 
   return (
     <main className="stack settings">
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {notice && <Notice>{notice}</Notice>}
       {profileError && !profile && <LoadError message={profileError} onRetry={() => void loadProfile()} />}
       {needsPasswordFinish(user, profile) && <SetPasswordForm />}
 
@@ -226,7 +227,7 @@ export default function Settings() {
 
       <section className="settings-group" aria-labelledby="st-reminders">
         <h3 id="st-reminders">Reminders & dose times</h3>
-        <div className="settings-card">
+        <RowGroup>
           {device.state === 'unsupported' && <p className="muted">This browser cannot receive notifications.</p>}
           {device.state === 'denied' && (
             <p role="status">
@@ -236,7 +237,7 @@ export default function Settings() {
             </p>
           )}
           {(device.state === 'on' || device.state === 'off') && (
-            <Setting htmlFor="st-device" label="Notifications on this device" desc="Alerts you when a dose is due.">
+            <Row htmlFor="st-device" name="Notifications on this device" desc="Alerts you when a dose is due.">
               <input
                 id="st-device"
                 type="checkbox"
@@ -247,19 +248,19 @@ export default function Settings() {
                 aria-busy={pendingDevice}
                 onChange={() => void toggleDevice()}
               />
-            </Setting>
+            </Row>
           )}
           {device.state === 'on' && (
-            <Setting desc="Check that alerts arrive on this device." wide>
+            <Row desc="Check that alerts arrive on this device." wide>
               <Button onClick={() => void sendTest()}>
                 Send test notification
               </Button>
-            </Setting>
+            </Row>
           )}
           {profile && (
-            <Setting
+            <Row
               htmlFor="st-snooze"
-              label={
+              name={
                 <>
                   Snooze length <Saved show={saved === 'snooze_minutes'} />
                 </>
@@ -278,12 +279,12 @@ export default function Settings() {
                   </option>
                 ))}
               </select>
-            </Setting>
+            </Row>
           )}
           {profile && (
-            <Setting
+            <Row
               htmlFor="st-zone"
-              label={
+              name={
                 <>
                   Time zone <Saved show={saved === 'time_zone'} />
                 </>
@@ -308,19 +309,19 @@ export default function Settings() {
                   Use this device's time zone ({detectedZone})
                 </Button>
               )}
-            </Setting>
+            </Row>
           )}
-        </div>
+        </RowGroup>
         {device.state !== 'unsupported' && <p className="muted settings-note">{isNativeApp() ? APP_TIP : ANDROID_TIP}</p>}
       </section>
 
       <section className="settings-group" aria-labelledby="st-meds">
         <h3 id="st-meds">Medications</h3>
-        <div className="settings-card">
+        <RowGroup>
           {profile && (
-            <Setting
+            <Row
               htmlFor="st-suggest"
-              label={
+              name={
                 <>
                   Medication name suggestions <Saved show={saved === 'suggestions_enabled'} />
                 </>
@@ -335,34 +336,29 @@ export default function Settings() {
                 checked={profile.suggestions_enabled}
                 onChange={(e) => void save({ suggestions_enabled: e.target.checked })}
               />
-            </Setting>
+            </Row>
           )}
-          <Setting desc="Download your meds and schedules as a spreadsheet file." wide>
+          <Row desc="Download your meds and schedules as a spreadsheet file." wide>
             <Button onClick={() => void exportPlan()}>
               Export med plan (CSV)
             </Button>
-          </Setting>
-        </div>
+          </Row>
+        </RowGroup>
       </section>
 
       <section className="settings-group" aria-labelledby="st-account">
         <h3 id="st-account">Account</h3>
-        <div className="settings-card">
-          <div className="setting">
-            <div className="setting-text">
-              <p className="setting-name">{guest ? 'Guest' : (user?.email ?? '')}</p>
-              {!guest && <p className="setting-desc">Signed in</p>}
-            </div>
+        <RowGroup>
+          <Row name={guest ? 'Guest' : (user?.email ?? '')} desc={guest ? undefined : 'Signed in'}>
             {!guest && (
               <Button onClick={() => void doSignOut()}>
                 Sign out
               </Button>
             )}
-          </div>
+          </Row>
           {guest &&
             (guestView === 'menu' ? (
-              <div className="setting wide">
-                <p className="setting-desc">Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
+              <Row wide desc="Your data is only on this device. Create a profile to secure it and use it on other devices.">
                 <div className="row">
                   <Button variant="primary" onClick={() => setGuestView('create')}>
                     Create profile
@@ -371,15 +367,15 @@ export default function Settings() {
                     Sign in
                   </Button>
                 </div>
-              </div>
+              </Row>
             ) : (
-              <div className="setting wide">
+              <Row wide>
                 <CredentialsForm
                   mode={guestView === 'create' ? 'upgrade' : 'signin'}
                   guest={guestView === 'signin'}
                   onCancel={() => setGuestView('menu')}
                 />
-              </div>
+              </Row>
             ))}
           {profile && (
             <form
@@ -388,7 +384,7 @@ export default function Settings() {
                 saveNickname()
               }}
             >
-              <div className="setting wide">
+              <Row wide>
                 <TextField
                   label={
                     <>
@@ -400,15 +396,15 @@ export default function Settings() {
                   onChange={(e) => setNickname(e.target.value)}
                   onBlur={saveNickname}
                 />
-              </div>
+              </Row>
             </form>
           )}
-        </div>
+        </RowGroup>
       </section>
 
       <section className="settings-group danger-zone" aria-labelledby="st-danger">
         <h3 id="st-danger">Danger zone</h3>
-        <p className="setting-desc">Deleting your profile removes all your meds and history. This can't be undone.</p>
+        <p className="list-row-desc">Deleting your profile removes all your meds and history. This can't be undone.</p>
         <Button ref={deleteButton} variant="danger" onClick={() => setDeleting(true)}>
           Delete profile
         </Button>
@@ -417,39 +413,6 @@ export default function Settings() {
         )}
       </section>
     </main>
-  )
-}
-
-/** One settings row: name and plain-language description on the left, the control on the right (or below, when wide). */
-function Setting({
-  htmlFor,
-  label,
-  desc,
-  wide,
-  children,
-}: {
-  htmlFor?: string
-  label?: React.ReactNode
-  desc?: string
-  wide?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div className={wide ? 'setting wide' : 'setting'}>
-      <div className="setting-text">
-        {label && (
-          <label className="setting-name" htmlFor={htmlFor}>
-            {label}
-          </label>
-        )}
-        {desc && (
-          <p id={htmlFor ? `${htmlFor}-desc` : undefined} className="setting-desc">
-            {desc}
-          </p>
-        )}
-      </div>
-      {children}
-    </div>
   )
 }
 

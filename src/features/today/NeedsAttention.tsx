@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { DeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { readGuestBannerDismissedAt, shouldShowGuestBanner, writeGuestBannerDismissedAt } from '../auth/guestBanner.ts'
 import { Button } from '../../components/Button'
+import { Notice } from '../../components/layout'
 
 export interface LowMed {
   id: string
@@ -60,7 +61,7 @@ export default function NeedsAttention({
               </Button>
             )}
             {notifications === 'denied' && <p>Notifications are blocked. Enable them for this site in your browser settings.</p>}
-            {enableError && <p role="alert">{enableError}</p>}
+            {enableError && <Notice tone="error">{enableError}</Notice>}
           </li>
         )}
         {low.map((m) => (

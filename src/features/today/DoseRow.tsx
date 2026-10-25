@@ -4,6 +4,7 @@ import { SNOOZE_MINUTES } from '../../data/doses'
 import type { DoseEvent, DoseStatus, Medication, Profile } from '../../lib/types'
 import { timeLabel } from './dayRange'
 import { Button } from '../../components/Button'
+import { Card } from '../../components/layout'
 
 const medLabel = (med: Medication | undefined) =>
   med ? `${med.name}${med.strength ? ` ${med.strength}` : ''}` : 'Unknown medication'
@@ -11,12 +12,12 @@ const medLabel = (med: Medication | undefined) =>
 /** A dose on a day not generated yet: shown so the day isn't empty, nothing to mark. */
 export function UpcomingRow({ med }: { med: Medication }) {
   return (
-    <li className="dose-row is-done">
+    <Card className="dose-row is-done">
       <Link className="dose-name" to={`/history/${med.id}`}>
         <strong>{medLabel(med)}</strong>
         <span className="status status-pending">Upcoming</span>
       </Link>
-    </li>
+    </Card>
   )
 }
 
@@ -42,7 +43,7 @@ export default function DoseRow({
     const word = dose.status === 'taken' ? 'Taken' : 'Skipped'
     const at = dose.acted_at ? ` ${timeLabel(dose.acted_at, tz)}` : ''
     return (
-      <li className="dose-row is-done">
+      <Card className="dose-row is-done">
         <Link className="dose-name" to={`/history/${dose.medication_id}`}>
           <strong>{label}</strong>
           <span className={`status status-${dose.status}`}>
@@ -54,7 +55,7 @@ export default function DoseRow({
         <Button variant="quiet" onClick={() => onSet('pending')} aria-label={`Undo ${word} ${label}`}>
           Undo
         </Button>
-      </li>
+      </Card>
     )
   }
 
@@ -62,7 +63,7 @@ export default function DoseRow({
   const snoozedUntil = snooze && dose.snoozed_until && Date.parse(dose.snoozed_until) > snooze.now ? dose.snoozed_until : null
 
   return (
-    <li className="dose-row is-due">
+    <Card className="dose-row is-due">
       <div className="dose-info">
         <Link className="dose-name" to={`/history/${dose.medication_id}`}>
           <strong>{label}</strong>
@@ -121,6 +122,6 @@ export default function DoseRow({
           </div>
         </div>
       )}
-    </li>
+    </Card>
   )
 }
