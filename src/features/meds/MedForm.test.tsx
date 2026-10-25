@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Suggestion } from '../autocomplete/sources'
 import type { Medication } from '../../lib/types'
+import type { ListState } from '../dinLookup/lookup'
+import type { ListKind, ProductRow } from '../dinLookup/types'
 
 type Group = { items: Suggestion[]; state: 'idle' | 'loading' | 'error' | 'done' }
 const sugg = vi.hoisted(() => ({
@@ -11,7 +13,20 @@ const sugg = vi.hoisted(() => ({
     us: { items: [], state: 'idle' } as Group,
   },
 }))
-vi.mock('../autocomplete/useSuggestions', () => ({ useSuggestions: () => sugg.value }))
+const queries = vi.hoisted(() => [] as string[])
+vi.mock('../autocomplete/useSuggestions', () => ({
+  useSuggestions: (q: string) => {
+    queries.push(q)
+    return sugg.value
+  },
+}))
+
+const ready = (products: Record<string, ProductRow>): ListState => ({ status: 'ready', products })
+const ADVIL: ProductRow = { name: 'ADVIL', form: 'tablet', strength: '200 mg', discontinued: false }
+const GLUCO: ProductRow = { name: 'GLUCOSAMINE', form: 'capsule', strength: '500 mg', discontinued: true }
+const lists: Record<ListKind, ListState> = { din: ready({ '02242963': ADVIL }), npn: ready({ '80012345': GLUCO }) }
+vi.mock('../dinLookup/dataVersion', () => ({ PRODUCT_DATA: { generatedAt: '2026-10-25', lists: ['din', 'npn'] } }))
+vi.mock('../dinLookup/useProductLists', () => ({ useProductLists: () => ({ ensure: () => Promise.resolve(lists) }) }))
 
 import MedForm from './MedForm'
 
@@ -20,6 +35,7 @@ const onCancel = vi.fn()
 
 beforeEach(() => {
   onSave.mockClear()
+  queries.length = 0
   sugg.value = { mine: [], ca: { items: [], state: 'idle' }, us: { items: [], state: 'idle' } }
 })
 
@@ -218,6 +234,132 @@ describe('MedForm', () => {
       submit()
       await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
       expect(savedMed()).toMatchObject({ id: 'm1', stock: null })
+    })
+  })
+
+  describe('filling from a DIN/NPN (MT-104)', () => {
+    const DIN = 'DIN or NPN (on the label)'
+    const TICK = "I've checked these details against the label."
+    const value = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value
+    const saveButton = () => screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
+    const banner = () => screen.queryByText(/^Filled from/)?.closest('[role="status"]')
+    const fill = async (number = '02242963') => {
+      type(DIN, number)
+      await screen.findByText(new RegExp(`Filled from \\S+ ${number}`))
+    }
+
+    it('a match fills name, strength and form, opens More details and shows the banner with the number', async () => {
+      renderForm()
+      await fill()
+      expect(value('Name')).toBe('ADVIL')
+      expect(value('Strength')).toBe('200 mg')
+      expect(value('Form')).toBe('tablet')
+      expect((screen.getByText('More details').closest('details') as HTMLDetailsElement).open).toBe(true)
+      expect(banner()?.textContent).toBe(
+        '⚠️ Filled from DIN 02242963. Please check every detail against your label before saving. ' +
+          'The number or the product details may be wrong or out of date.',
+      )
+      expect(screen.queryByText(/discontinued/)).toBeNull()
+    })
+
+    it('filled fields carry the from-label tag until edited', async () => {
+      renderForm()
+      await fill()
+      const tagOf = (label: string) => {
+        const el = screen.getByLabelText(label)
+        return [el.classList.contains('from-label'), document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent]
+      }
+      expect(tagOf('Name')).toEqual([true, 'from label'])
+      expect(tagOf('Strength')).toEqual([true, 'from label'])
+      expect(tagOf('Form')).toEqual([true, 'from label'])
+      type('Strength', '400 mg')
+      expect(tagOf('Strength')).toEqual([false, undefined])
+      expect(banner()).toBeTruthy()
+    })
+
+    it('Save is disabled until the tick is checked, then saves the filled values', async () => {
+      renderForm()
+      await fill()
+      expect(saveButton().disabled).toBe(true)
+      fireEvent.click(screen.getByLabelText(TICK))
+      expect(saveButton().disabled).toBe(false)
+      submit()
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+      expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'ADVIL', strength: '200 mg', form: 'tablet' })
+    })
+
+    it('submitting the form while unticked does not save', async () => {
+      renderForm()
+      await fill()
+      fireEvent.submit(saveButton().closest('form')!)
+      await Promise.resolve()
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('the hint explains the disabled Save', async () => {
+      renderForm()
+      await fill()
+      const tick = screen.getByLabelText(TICK)
+      expect(document.getElementById(tick.getAttribute('aria-describedby')!)?.textContent).toBe('Tick to confirm before saving')
+      fireEvent.click(tick)
+      expect(tick.getAttribute('aria-describedby')).toBeNull()
+      expect(screen.queryByText('Tick to confirm before saving')).toBeNull()
+    })
+
+    it('a new matching number refills and unticks', async () => {
+      renderForm()
+      await fill()
+      fireEvent.click(screen.getByLabelText(TICK))
+      await fill('80012345')
+      expect(value('Name')).toBe('GLUCOSAMINE')
+      expect(value('Form')).toBe('capsule')
+      expect((screen.getByLabelText(TICK) as HTMLInputElement).checked).toBe(false)
+      expect(saveButton().disabled).toBe(true)
+    })
+
+    it('clearing the number clears only untouched label fields', async () => {
+      renderForm()
+      await fill()
+      type('Name', 'Advil Liqui-Gels')
+      type(DIN, '')
+      expect(value('Name')).toBe('Advil Liqui-Gels')
+      expect(value('Strength')).toBe('')
+      expect(value('Form')).toBe('')
+      expect(banner()).toBeFalsy()
+      expect(screen.queryByLabelText(TICK)).toBeNull()
+      expect(saveButton().disabled).toBe(false)
+    })
+
+    it('editing the number to an unknown one detaches the fill', async () => {
+      renderForm()
+      await fill()
+      type(DIN, '0224296')
+      expect(banner()).toBeFalsy()
+      expect(value('Name')).toBe('')
+      type(DIN, '02242964')
+      expect(await screen.findByText('No product found for 02242964. Check the number or add by name.')).toBeTruthy()
+      expect(value('Name')).toBe('')
+      expect(screen.queryByLabelText(TICK)).toBeNull()
+    })
+
+    it('discontinued product adds the discontinued sentence', async () => {
+      renderForm()
+      await fill('80012345')
+      expect(banner()?.textContent).toMatch(/Filled from NPN 80012345\..*This product is marked discontinued by Health Canada\.$/)
+    })
+
+    it('a fill sends nothing to remote name search', async () => {
+      renderForm()
+      await fill()
+      expect(queries.some((q) => /advil/i.test(q))).toBe(false)
+    })
+
+    it('adding by name shows no tick and the schedule is left as is', async () => {
+      renderForm()
+      expect(screen.queryByLabelText(TICK)).toBeNull()
+      await fill()
+      expect(screen.getByLabelText('How often')).toBeTruthy()
+      expect((screen.getAllByLabelText(/^Time/)[0] as HTMLInputElement).value).toBe('09:00')
     })
   })
 

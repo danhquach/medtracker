@@ -890,6 +890,16 @@ fieldset {
   border-top: 1px solid var(--divider);
 }
 
+/* A field still holding what a DIN/NPN match filled in; an invalid border (below) wins. */
+.from-label {
+  border-color: var(--warning);
+}
+
+/* The "I've checked…" tick sits right above the Save it unlocks. */
+.label-check {
+  margin-bottom: 8px;
+}
+
 /* Each dose time with its Remove button beside the input, below the label. */
 .time-row {
   align-items: flex-start;
@@ -947,6 +957,10 @@ details.more > summary {
 
 .notice-error {
   border-left-color: var(--danger);
+}
+
+.notice-warning {
+  border-left-color: var(--warning);
 }
 
 /* Stays in the tree while empty so screen readers announce the next message. */

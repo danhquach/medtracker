@@ -12,6 +12,7 @@ export default function NameAutocomplete({
   meds,
   remoteEnabled,
   error,
+  fromLabel,
 }: {
   value: string
   onChange: (v: string) => void
@@ -19,6 +20,8 @@ export default function NameAutocomplete({
   meds: Medication[]
   remoteEnabled: boolean
   error?: string
+  /** The name still holds the value a DIN/NPN match filled in. */
+  fromLabel?: boolean
 }) {
   const [open, setOpen] = useState(false)
   // Only text the user typed is searched; stored or picked names are never sent anywhere.
@@ -59,6 +62,8 @@ export default function NameAutocomplete({
           setOpen(true)
         }}
         error={error}
+        className={fromLabel ? 'from-label' : undefined}
+        hint={fromLabel ? 'from label' : undefined}
       />
       {showing && (
         <div className="suggestions" id={listId}>

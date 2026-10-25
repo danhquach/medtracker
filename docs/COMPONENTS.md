@@ -11,7 +11,7 @@ Every screen builds its UI from the pieces in `src/components/`, so behaviour, a
 | One item in a list | `Card` | `layout.tsx` |
 | Settings-style rows | `RowGroup` + `Row` (`name`, `desc`, `htmlFor`, `wide`) | `layout.tsx` |
 | Small label ("Paused", "12 tablets left") | `Chip` | `layout.tsx` |
-| Screen- or form-level message | `Notice` (`tone`: info, error) | `layout.tsx` |
+| Screen- or form-level message | `Notice` (`tone`: info, warning, error) | `layout.tsx` |
 | Loading / nothing yet | `Loading`, `Empty` | `states.tsx` |
 | "Are you sure?" | `useConfirm()` for a yes/no; `ConfirmDialog` when the dialog needs its own content | `useConfirm.tsx`, `ConfirmDialog.tsx` |
 | Icons | `CheckIcon`, `PillIcon`, … (decorative: always pair with text or `aria-label`) | `icons.tsx` |

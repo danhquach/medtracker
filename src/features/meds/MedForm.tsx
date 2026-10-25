@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { Medication, MedForm as MedFormKind, Schedule } from '../../lib/types'
 import type { MedInput, ScheduleInput } from '../../data/meds'
 import type { Suggestion } from '../autocomplete/sources'
+import type { Product } from '../dinLookup/types'
 import DinNpnField from './DinNpnField'
 import NameAutocomplete from './NameAutocomplete'
 import ScheduleEditor from './ScheduleEditor'
@@ -9,6 +10,7 @@ import { isStopped, stockUnit } from './summary'
 import { toMedInput, toScheduleInput, validateMed, type FieldErrors, type ScheduleDraft } from './validate'
 import { Button } from '../../components/Button'
 import { NumberField, SelectField, TextField } from '../../components/Field'
+import { Notice } from '../../components/layout'
 
 const FORMS: MedFormKind[] = ['tablet', 'capsule', 'liquid', 'other']
 
@@ -29,6 +31,9 @@ const newSchedule = (): ScheduleDraft => ({
   start_date: '',
   end_date: '',
 })
+
+/** A form filled from a DIN/NPN match, with the values as filled. */
+type LabelFill = Pick<Product, 'number' | 'kind' | 'discontinued'> & { filled: { name: string; strength: string; form: string } }
 
 /** This schedule's errors with the `<index>.` prefix stripped. */
 const scheduleErrors = (errors: FieldErrors, i: number): FieldErrors =>
@@ -69,6 +74,8 @@ export default function MedForm({
   const [drafts, setDrafts] = useState<ScheduleDraft[]>(schedules && schedules.length > 0 ? schedules.map(draftOf) : [newSchedule()])
   const [chips, setChips] = useState<string[]>([])
   const [din, setDin] = useState('')
+  const [labelFill, setLabelFill] = useState<LabelFill | null>(null)
+  const [checked, setChecked] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -80,6 +87,12 @@ export default function MedForm({
   const draft = { name, strength, form, notes, notify, units_per_dose: units, stock, refill_threshold_days: threshold }
   // Errors show from the first Save on and update as the user fixes them.
   const errors: FieldErrors = attempt > 0 ? validateMed(draft, drafts) : {}
+  // A filled form can't be saved until the user ticks that they checked it against the label.
+  const needsTick = labelFill !== null && !checked
+  /** A field still holding the value the match put there. */
+  const fromLabel = (field: keyof LabelFill['filled'], v: string) => !!labelFill && v !== '' && v === labelFill.filled[field]
+  const fromLabelProps = (field: keyof LabelFill['filled'], v: string) =>
+    fromLabel(field, v) ? { className: 'from-label', hint: 'from label' } : {}
 
   // After a failed Save: reveal every invalid field (open its collapsed sections) and focus the first.
   useEffect(() => {
@@ -97,8 +110,33 @@ export default function MedForm({
     if (s.form && (FORMS as string[]).includes(s.form)) setForm(s.form)
   }
 
+  // A new match overwrites name, strength and form even if hand-edited; safe because the tick resets.
+  function fillFrom(p: Product) {
+    setName(p.name)
+    setStrength(p.strength)
+    setForm(p.form)
+    setChips([])
+    if (moreRef.current) moreRef.current.open = true
+    setLabelFill({ number: p.number, kind: p.kind, discontinued: p.discontinued, filled: { name: p.name, strength: p.strength, form: p.form } })
+    setChecked(false)
+  }
+
+  // Any change to the number drops the fill: untouched label fields clear, the user's own edits stay.
+  // So product A's details can't be saved under number B, and the banner never shows another number.
+  function changeDin(digits: string) {
+    setDin(digits)
+    if (!labelFill || digits === labelFill.number) return
+    if (fromLabel('name', name)) setName('')
+    if (fromLabel('strength', strength)) setStrength('')
+    if (fromLabel('form', form)) setForm('')
+    setLabelFill(null)
+    setChecked(false)
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    // Holds for every way of submitting (Enter in a field too), not just the disabled button.
+    if (needsTick) return
     setSaveError(null)
     setAttempt((n) => n + 1)
     if (Object.keys(validateMed(draft, drafts)).length > 0) return
@@ -120,8 +158,22 @@ export default function MedForm({
 
   return (
     <form className="stack med-form" onSubmit={submit} noValidate ref={formRef}>
-      {/* New meds only. MT-104 fills the form from a match. */}
-      {!med && <DinNpnField value={din} onChange={setDin} onMatch={() => {}} />}
+      {/* New meds only. */}
+      {!med && <DinNpnField value={din} onChange={changeDin} onMatch={fillFrom} />}
+      {!med && (
+        <Notice tone="warning">
+          {labelFill && (
+            <>
+              ⚠️{' '}
+              <strong>
+                Filled from {labelFill.kind} {labelFill.number}. Please check every detail against your label before saving.
+              </strong>{' '}
+              The number or the product details may be wrong or out of date.
+              {labelFill.discontinued && ' This product is marked discontinued by Health Canada.'}
+            </>
+          )}
+        </Notice>
+      )}
       <NameAutocomplete
         value={name}
         onChange={(v) => {
@@ -132,6 +184,7 @@ export default function MedForm({
         meds={meds}
         remoteEnabled={remoteSuggestions}
         error={errors.name}
+        fromLabel={fromLabel('name', name)}
       />
       {chips.length > 0 && (
         <div className="row" role="group" aria-label="Strengths">
@@ -169,8 +222,14 @@ export default function MedForm({
       <details className="more" ref={moreRef} open={!!med || undefined}>
         <summary>More details</summary>
         <div className="stack">
-          <TextField label="Strength" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="e.g. 200 mg" />
-          <SelectField label="Form" value={form} onChange={(e) => setForm(e.target.value)}>
+          <TextField
+            label="Strength"
+            value={strength}
+            onChange={(e) => setStrength(e.target.value)}
+            placeholder="e.g. 200 mg"
+            {...fromLabelProps('strength', strength)}
+          />
+          <SelectField label="Form" value={form} onChange={(e) => setForm(e.target.value)} {...fromLabelProps('form', form)}>
             <option value="">—</option>
             {FORMS.map((f) => (
               <option key={f} value={f}>
@@ -212,8 +271,27 @@ export default function MedForm({
             {saveError}
           </p>
         )}
+        {labelFill && (
+          <div className="label-check">
+            <label>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => setChecked(e.target.checked)}
+                aria-describedby={needsTick ? id('tick-hint') : undefined}
+                style={{ display: 'inline', width: 'auto' }}
+              />{' '}
+              I've checked these details against the label.
+            </label>
+            {needsTick && (
+              <p id={id('tick-hint')} className="muted hint">
+                Tick to confirm before saving
+              </p>
+            )}
+          </div>
+        )}
         <div className="row">
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button type="submit" variant="primary" disabled={saving || needsTick}>
             Save
           </Button>
           <Button onClick={onCancel}>
