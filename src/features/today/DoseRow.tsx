@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { SNOOZE_MINUTES } from '../../data/doses'
 import type { DoseEvent, DoseStatus, Medication, Profile } from '../../lib/types'
 import { timeLabel } from './dayRange'
+import { Button } from '../../components/Button'
 
 const medLabel = (med: Medication | undefined) =>
   med ? `${med.name}${med.strength ? ` ${med.strength}` : ''}` : 'Unknown medication'
@@ -50,9 +51,9 @@ export default function DoseRow({
             {at}
           </span>
         </Link>
-        <button className="quiet" onClick={() => onSet('pending')} aria-label={`Undo ${word} ${label}`}>
+        <Button variant="quiet" onClick={() => onSet('pending')} aria-label={`Undo ${word} ${label}`}>
           Undo
-        </button>
+        </Button>
       </li>
     )
   }
@@ -73,12 +74,12 @@ export default function DoseRow({
       </div>
       {/* Quiet Skip at one edge, Taken at the other, so a thumb can't land on the wrong one. Snooze only opens a picker. */}
       <div className="dose-actions">
-        <button className="quiet" onClick={() => onSet('skipped')} aria-label={`Skip ${label}`}>
+        <Button variant="quiet" onClick={() => onSet('skipped')} aria-label={`Skip ${label}`}>
           Skip
-        </button>
+        </Button>
         {canSnooze && (
-          <button
-            className="quiet"
+          <Button
+            variant="quiet"
             disabled={!snooze.online}
             onClick={() => setPicking((p) => !p)}
             aria-expanded={picking}
@@ -86,11 +87,11 @@ export default function DoseRow({
             title={snooze.online ? undefined : 'Needs a connection'}
           >
             Snooze
-          </button>
+          </Button>
         )}
-        <button className="primary" onClick={() => onSet('taken')} aria-label={`Taken ${label}`}>
+        <Button variant="primary" onClick={() => onSet('taken')} aria-label={`Taken ${label}`}>
           Taken
-        </button>
+        </Button>
       </div>
       {canSnooze && picking && snooze.online && (
         <div
@@ -104,7 +105,7 @@ export default function DoseRow({
           </span>
           <div className="segmented">
             {SNOOZE_MINUTES.map((m) => (
-              <button
+              <Button
                 key={m}
                 className={m === snooze.preset ? 'is-preset' : undefined}
                 autoFocus={m === snooze.preset}
@@ -115,7 +116,7 @@ export default function DoseRow({
                 }}
               >
                 {m} min
-              </button>
+              </Button>
             ))}
           </div>
         </div>

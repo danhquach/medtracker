@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { continueAsGuest } from './auth'
 import CredentialsForm from './CredentialsForm'
 import EmailLinkNotice from './EmailLinkNotice'
+import { Button } from '../../components/Button'
 
 export default function Welcome() {
   const [view, setView] = useState<'menu' | 'signup' | 'signin'>('menu')
@@ -22,19 +23,19 @@ export default function Welcome() {
       <EmailLinkNotice />
       <p className="muted">Keep track of your medications and never miss a dose.</p>
       <div className="stack">
-        <button
-          className="primary"
+        <Button
+          variant="primary"
           onClick={() => {
             setError(null)
             continueAsGuest().catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not start'))
           }}
         >
           Start now
-        </button>
-        <button onClick={() => setView('signin')}>Sign in</button>
-        <button className="link" onClick={() => setView('signup')}>
+        </Button>
+        <Button onClick={() => setView('signin')}>Sign in</Button>
+        <Button variant="link" onClick={() => setView('signup')}>
           Create a profile
-        </button>
+        </Button>
         <p className="muted">No profile needed to start. Your data stays on this device until you create a profile.</p>
       </div>
       {error && <p role="alert">{error}</p>}

@@ -14,6 +14,7 @@ import Today from './features/today/Today'
 import { dayParam, dayTitle } from './features/today/dayRange'
 import { useGoBack } from './lib/useGoBack'
 import './theme.css'
+import { Button } from './components/Button'
 
 function useBoot(userId: string | undefined): boolean {
   const [readyFor, setReadyFor] = useState<string | null>(null)
@@ -48,9 +49,9 @@ function AppHeader() {
   return (
     <header className="app-header">
       {screen?.back && (
-        <button type="button" className="icon-button" aria-label="Back" onClick={goBack}>
+        <Button variant="icon" aria-label="Back" onClick={goBack}>
           <BackIcon />
-        </button>
+        </Button>
       )}
       <h1>{day ? dayTitle(day) : (screen?.title ?? 'MedTracker')}</h1>
       {screen?.path !== '/settings' && (

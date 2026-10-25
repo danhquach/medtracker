@@ -7,6 +7,7 @@ import NameAutocomplete from './NameAutocomplete'
 import ScheduleEditor from './ScheduleEditor'
 import { isStopped, stockUnit } from './summary'
 import { invalidProps, toMedInput, toScheduleInput, validateMed, type FieldErrors, type ScheduleDraft } from './validate'
+import { Button } from '../../components/Button'
 
 const FORMS: MedFormKind[] = ['tablet', 'capsule', 'liquid', 'other']
 
@@ -131,9 +132,8 @@ export default function MedForm({
       {chips.length > 0 && (
         <div className="row" role="group" aria-label="Strengths">
           {chips.map((c) => (
-            <button
+            <Button
               key={c}
-              type="button"
               className="chip"
               aria-pressed={strength === c}
               onClick={() => {
@@ -142,7 +142,7 @@ export default function MedForm({
               }}
             >
               {c}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -158,9 +158,9 @@ export default function MedForm({
           onRemove={drafts.length > 1 ? () => setDrafts(drafts.filter((_, j) => j !== i)) : undefined}
         />
       ))}
-      <button type="button" onClick={() => setDrafts([...drafts, newSchedule()])}>
+      <Button onClick={() => setDrafts([...drafts, newSchedule()])}>
         Add schedule
-      </button>
+      </Button>
 
       <details className="more" ref={moreRef} open={!!med || undefined}>
         <summary>More details</summary>
@@ -233,28 +233,28 @@ export default function MedForm({
           </p>
         )}
         <div className="row">
-          <button type="submit" className="primary" disabled={saving}>
+          <Button type="submit" variant="primary" disabled={saving}>
             Save
-          </button>
-          <button type="button" onClick={onCancel}>
+          </Button>
+          <Button onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
 
       {med && manage && (
         <div className="row" role="group" aria-label="Manage medication">
-          <button type="button" onClick={manage.onPause}>
+          <Button onClick={manage.onPause}>
             {med.paused ? 'Resume' : 'Pause'}
-          </button>
+          </Button>
           {schedules?.some((s) => s.kind !== 'prn') && !isStopped(schedules, today) && (
-            <button type="button" onClick={manage.onStop}>
+            <Button onClick={manage.onStop}>
               Stop…
-            </button>
+            </Button>
           )}
-          <button type="button" className="danger" onClick={manage.onDelete}>
+          <Button variant="danger" onClick={manage.onDelete}>
             Delete…
-          </button>
+          </Button>
         </div>
       )}
     </form>

@@ -4,6 +4,7 @@ import type { Suggestion } from '../autocomplete/sources'
 import { useSuggestions } from '../autocomplete/useSuggestions'
 import { FieldError } from './FieldError'
 import { invalidProps } from './validate'
+import { Button } from '../../components/Button'
 
 export default function NameAutocomplete({
   value,
@@ -78,8 +79,7 @@ export default function NameAutocomplete({
               <ul>
                 {g.items.map((s) => (
                   <li key={s.name}>
-                    <button
-                      type="button"
+                    <Button
                       // Safari doesn't focus a clicked button, so keep focus in the field until the click lands.
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
@@ -89,7 +89,7 @@ export default function NameAutocomplete({
                       }}
                     >
                       {s.name}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>

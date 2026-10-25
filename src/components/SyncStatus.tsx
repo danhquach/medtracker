@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Op } from '../data/offline/ops'
 import { dismissFailed, snapshot, subscribe, type SyncStatus as Status } from '../data/offline/sync'
 import { changes } from './syncCopy'
+import { Button } from './Button'
 
 function describe(op: Op): string {
   switch (op.kind) {
@@ -57,9 +58,9 @@ export default function SyncStatus() {
       {line && <p role="status">{line}</p>}
       {failed.length > 0 && (
         <>
-          <button type="button" className="link-button sync-failed" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Button className="link-button sync-failed" aria-expanded={open} onClick={() => setOpen(!open)}>
             {`${changes(failed.length)} couldn't sync`}
-          </button>
+          </Button>
           {open && (
             <ul className="sync-failed-list">
               {failed.map((item) => {
@@ -71,9 +72,9 @@ export default function SyncStatus() {
                       {describe(op)}
                       {name ? ` · ${name}` : ''} — {item.error}
                     </span>
-                    <button type="button" onClick={() => void dismissFailed(item.seq)}>
+                    <Button onClick={() => void dismissFailed(item.seq)}>
                       Dismiss
-                    </button>
+                    </Button>
                   </li>
                 )
               })}

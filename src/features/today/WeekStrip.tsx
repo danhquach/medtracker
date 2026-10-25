@@ -1,4 +1,5 @@
 import { weekAround } from './dayRange'
+import { Button } from '../../components/Button'
 
 const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' })
 const fullName = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
@@ -16,7 +17,7 @@ export default function WeekStrip({
   return (
     <div className="week-strip" role="group" aria-label="Week">
       {weekAround(today).map((d) => (
-        <button
+        <Button
           key={d}
           className={d === today ? 'day is-today' : 'day'}
           aria-pressed={d === selected}
@@ -25,7 +26,7 @@ export default function WeekStrip({
         >
           <span>{dayName.format(at(d))}</span>
           <strong>{Number(d.slice(8))}</strong>
-        </button>
+        </Button>
       ))}
     </div>
   )

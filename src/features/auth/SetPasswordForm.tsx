@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { setPassword } from './auth'
+import { Button } from '../../components/Button'
 
 export default function SetPasswordForm({ onDone }: { onDone?: () => void }) {
   const [password, setPw] = useState('')
@@ -38,9 +39,9 @@ export default function SetPasswordForm({ onDone }: { onDone?: () => void }) {
         At least 8 characters.
       </p>
       {error && <p role="alert">{error}</p>}
-      <button type="submit" className="primary">
+      <Button type="submit" variant="primary">
         Set your password
-      </button>
+      </Button>
     </form>
   )
 }

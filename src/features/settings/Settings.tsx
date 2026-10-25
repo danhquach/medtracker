@@ -16,6 +16,7 @@ import { useSession } from '../auth/useSession'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
 import { canShareFile, shareFile } from '../../native/shareFile'
 import { BOM, csvBlob, toCsv } from './exportCsv'
+import { Button } from '../../components/Button'
 
 const PLAN_FILE = 'medtracker-plan.csv'
 
@@ -249,9 +250,9 @@ export default function Settings() {
           )}
           {device.state === 'on' && (
             <Setting desc="Check that alerts arrive on this device." wide>
-              <button type="button" onClick={() => void sendTest()}>
+              <Button onClick={() => void sendTest()}>
                 Send test notification
-              </button>
+              </Button>
             </Setting>
           )}
           {profile && (
@@ -302,9 +303,9 @@ export default function Settings() {
                 ))}
               </select>
               {detectedZone && detectedZone !== profile.time_zone && (
-                <button type="button" onClick={() => saveZone(detectedZone)}>
+                <Button onClick={() => saveZone(detectedZone)}>
                   Use this device's time zone ({detectedZone})
-                </button>
+                </Button>
               )}
             </Setting>
           )}
@@ -336,9 +337,9 @@ export default function Settings() {
             </Setting>
           )}
           <Setting desc="Download your meds and schedules as a spreadsheet file." wide>
-            <button type="button" onClick={() => void exportPlan()}>
+            <Button onClick={() => void exportPlan()}>
               Export med plan (CSV)
-            </button>
+            </Button>
           </Setting>
         </div>
       </section>
@@ -352,9 +353,9 @@ export default function Settings() {
               {!guest && <p className="setting-desc">Signed in</p>}
             </div>
             {!guest && (
-              <button type="button" onClick={() => void doSignOut()}>
+              <Button onClick={() => void doSignOut()}>
                 Sign out
-              </button>
+              </Button>
             )}
           </div>
           {guest &&
@@ -362,12 +363,12 @@ export default function Settings() {
               <div className="setting wide">
                 <p className="setting-desc">Your data is only on this device. Create a profile to secure it and use it on other devices.</p>
                 <div className="row">
-                  <button type="button" className="primary" onClick={() => setGuestView('create')}>
+                  <Button variant="primary" onClick={() => setGuestView('create')}>
                     Create profile
-                  </button>
-                  <button type="button" onClick={() => setGuestView('signin')}>
+                  </Button>
+                  <Button onClick={() => setGuestView('signin')}>
                     Sign in
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -405,9 +406,9 @@ export default function Settings() {
       <section className="settings-group danger-zone" aria-labelledby="st-danger">
         <h3 id="st-danger">Danger zone</h3>
         <p className="setting-desc">Deleting your profile removes all your meds and history. This can't be undone.</p>
-        <button ref={deleteButton} type="button" className="danger" onClick={() => setDeleting(true)}>
+        <Button ref={deleteButton} variant="danger" onClick={() => setDeleting(true)}>
           Delete profile
-        </button>
+        </Button>
         {deleting && (
           <DeleteDialog busy={busy} returnFocus={deleteButton} onConfirm={() => void deleteProfile()} onClose={() => setDeleting(false)} />
         )}
@@ -524,12 +525,12 @@ function DeleteDialog({
       <p>This permanently deletes your profile and all your medications and history. Type DELETE to confirm.</p>
       <input aria-label="Type DELETE to confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
       <div className="row">
-        <button type="button" className="danger" disabled={confirmText !== 'DELETE' || busy} aria-busy={busy} onClick={onConfirm}>
+        <Button variant="danger" disabled={confirmText !== 'DELETE'} busy={busy} onClick={onConfirm}>
           {busy ? 'Deleting…' : 'Delete my profile'}
-        </button>
-        <button type="button" disabled={busy} onClick={onClose}>
+        </Button>
+        <Button disabled={busy} onClick={onClose}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   )
