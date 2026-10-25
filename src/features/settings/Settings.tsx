@@ -246,7 +246,7 @@ export default function Settings() {
                   Snooze length <Saved show={saved === 'snooze_minutes'} />
                 </>
               }
-              desc="How long Snooze waits before reminding you again."
+              desc="How long Snooze waits before reminding you again. A reminder you don't answer also repeats this often, up to 5 times."
             >
               <select
                 id="st-snooze"
