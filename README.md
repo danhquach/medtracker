@@ -113,5 +113,6 @@ flowchart TD
 
 | Doc | For |
 |---|---|
+| [Components](docs/COMPONENTS.md) | Shared UI pieces and how to add or change one |
 | [Operations](docs/OPERATIONS.md) | CI and branch rules, deploying Supabase + Pages, reminder troubleshooting, known risks, device checklist |
 | [Issues](https://github.com/danhquach/medtracker/issues) | Bugs and work, titled `MT-<n>: ...` |
