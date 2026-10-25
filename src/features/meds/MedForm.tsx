@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { Medication, MedForm as MedFormKind, Schedule } from '../../lib/types'
 import type { MedInput, ScheduleInput } from '../../data/meds'
 import type { Suggestion } from '../autocomplete/sources'
+import DinNpnField from './DinNpnField'
 import NameAutocomplete from './NameAutocomplete'
 import ScheduleEditor from './ScheduleEditor'
 import { isStopped, stockUnit } from './summary'
@@ -67,6 +68,7 @@ export default function MedForm({
   const [notify, setNotify] = useState(med?.notify ?? true)
   const [drafts, setDrafts] = useState<ScheduleDraft[]>(schedules && schedules.length > 0 ? schedules.map(draftOf) : [newSchedule()])
   const [chips, setChips] = useState<string[]>([])
+  const [din, setDin] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -118,6 +120,8 @@ export default function MedForm({
 
   return (
     <form className="stack med-form" onSubmit={submit} noValidate ref={formRef}>
+      {/* New meds only. MT-104 fills the form from a match. */}
+      {!med && <DinNpnField value={din} onChange={setDin} onMatch={() => {}} />}
       <NameAutocomplete
         value={name}
         onChange={(v) => {
