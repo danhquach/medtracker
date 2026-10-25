@@ -7,12 +7,12 @@ describe('ConfirmDialog', () => {
   const renderDialog = (props: Partial<Parameters<typeof ConfirmDialog>[0]> = {}) => {
     const onConfirm = vi.fn()
     const onCancel = vi.fn()
-    render(
+    const { unmount } = render(
       <ConfirmDialog title="Delete Aspirin?" confirmLabel="Delete" danger onConfirm={onConfirm} onCancel={onCancel} {...props}>
         <p>This also removes its history.</p>
       </ConfirmDialog>,
     )
-    return { onConfirm, onCancel }
+    return { onConfirm, onCancel, unmount }
   }
 
   it('is a labelled, described modal dialog', () => {
@@ -66,6 +66,37 @@ describe('ConfirmDialog', () => {
     expect(document.activeElement).toBe(opener)
     opener.remove()
   })
+
+  it('cancels on Escape even after focus left the dialog', () => {
+    const { onCancel } = renderDialog()
+    ;(document.activeElement as HTMLElement).blur()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('makes the rest of the page inert while open, and restores it on close', () => {
+    const page = document.createElement('div')
+    document.body.appendChild(page)
+    const { unmount } = renderDialog()
+    expect(page.hasAttribute('inert')).toBe(true)
+    expect(screen.getByRole('dialog').closest('[inert]')).toBeNull()
+    unmount()
+    expect(page.hasAttribute('inert')).toBe(false)
+    page.remove()
+  })
+
+  it("returns focus to a closed menu's toggle when the opener was a menu item", () => {
+    const menu = document.createElement('details')
+    menu.innerHTML = '<summary>More</summary><button>Delete…</button>'
+    menu.open = true
+    document.body.appendChild(menu)
+    menu.querySelector('button')!.focus()
+    menu.open = false
+    const { unmount } = renderDialog()
+    unmount()
+    expect(document.activeElement).toBe(menu.querySelector('summary'))
+    menu.remove()
+  })
 })
 
 describe('useConfirm', () => {
@@ -93,5 +124,25 @@ describe('useConfirm', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: button })))
     expect(onResult).toHaveBeenCalledWith(expected)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('answers Cancel when the screen goes away with the question open', async () => {
+    const onResult = vi.fn()
+    const { unmount } = render(<Harness onResult={onResult} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    unmount()
+    await act(async () => {})
+    expect(onResult).toHaveBeenCalledWith(false)
+  })
+
+  it('answers Cancel to an earlier question when a newer one replaces it', async () => {
+    const onResult = vi.fn()
+    render(<Harness onResult={onResult} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open', hidden: true }))
+    await act(async () => {})
+    expect(onResult).toHaveBeenCalledWith(false)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Stop' })))
+    expect(onResult.mock.calls).toEqual([[false], [true]])
   })
 })

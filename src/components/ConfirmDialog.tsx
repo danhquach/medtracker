@@ -33,18 +33,33 @@ export function ConfirmDialog({
 
   useEffect(() => {
     const opener = returnFocus?.current ?? (document.activeElement as HTMLElement | null)
+    // The rest of the page can't be tabbed to, clicked or read while the dialog is open.
+    const backdrop = ref.current?.parentElement
+    const page = [...document.body.children].filter((el) => el !== backdrop && !el.hasAttribute('inert'))
+    page.forEach((el) => el.setAttribute('inert', ''))
     // An input to fill in comes first; otherwise Cancel, so a stray Enter never confirms.
     const input = ref.current?.querySelector<HTMLElement>('input, select, textarea')
     ;(input ?? ref.current?.querySelector<HTMLElement>('[data-cancel]'))?.focus()
-    return () => opener?.focus()
+    return () => {
+      page.forEach((el) => el.removeAttribute('inert'))
+      // An opener inside a menu that closed (e.g. a med card's More menu) hands focus to the menu's toggle.
+      const closedMenu = opener?.closest('details:not([open])')
+      ;(closedMenu?.querySelector('summary') ?? opener)?.focus()
+    }
   }, [returnFocus])
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape' && !busy) {
+  // On the document, so Escape still works after focus drops out of the dialog (e.g. a click on its text).
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || busy) return
       e.preventDefault()
       onCancel()
-      return
     }
+    document.addEventListener('keydown', onEscape)
+    return () => document.removeEventListener('keydown', onEscape)
+  }, [busy, onCancel])
+
+  function onKeyDown(e: React.KeyboardEvent) {
     if (e.key !== 'Tab' || !ref.current) return
     const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
     const first = items[0]

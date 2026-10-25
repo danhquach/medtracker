@@ -1,14 +1,28 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConfirmDialog } from './ConfirmDialog'
 
 type Ask = { title: string; message: string; confirmLabel: string; danger?: boolean }
 
 /** An awaitable stand-in for window.confirm: `if (!(await confirm({...}))) return`. Render `dialog` somewhere on screen. */
 export function useConfirm() {
-  const [ask, setAsk] = useState<(Ask & { resolve: (ok: boolean) => void }) | null>(null)
-  const confirm = useCallback((opts: Ask) => new Promise<boolean>((resolve) => setAsk({ ...opts, resolve })), [])
+  const [ask, setAsk] = useState<Ask | null>(null)
+  // Every question gets an answer: a newer one or leaving the screen counts as Cancel.
+  const pending = useRef<((ok: boolean) => void) | null>(null)
+  const settle = (ok: boolean) => {
+    pending.current?.(ok)
+    pending.current = null
+  }
+  const confirm = useCallback((opts: Ask) => {
+    pending.current?.(false)
+    return new Promise<boolean>((resolve) => {
+      pending.current = resolve
+      setAsk(opts)
+    })
+  }, [])
+  useEffect(() => () => pending.current?.(false), [])
+
   const close = (ok: boolean) => {
-    ask?.resolve(ok)
+    settle(ok)
     setAsk(null)
   }
   const dialog = ask && (
