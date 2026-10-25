@@ -161,10 +161,14 @@ button:disabled {
 
 /* Pressed state (MT-94): a light tint under the label while any button or link is held, and buttons
    shrink a touch. One rule for all, so new buttons get it too; disabled buttons stay still. The
-   WebView's own blue tap flash is turned off so it doesn't fight the tint. */
+   WebView's own blue tap flash is turned off so it doesn't fight the tint. Holding a control never
+   selects its label (MT-96); plain text stays selectable. */
 button,
 a[href] {
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button:not(:disabled),
