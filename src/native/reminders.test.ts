@@ -57,8 +57,8 @@ const row = (over: Partial<DoseEvent> = {}): DoseEvent => ({
   snoozed_until: null, ...over,
 })
 /** Taps a notification button, then waits for the queued save and sync to finish. */
-const tap = async (actionId: string) => {
-  h.act({ actionId, notification: { id: reminderId('m1', DUE), title: '', body: '', extra: { medId: 'm1', scheduledFor: DUE } } })
+const tap = async (actionId: string, repeat = 0) => {
+  h.act({ actionId, notification: { id: reminderId('m1', DUE, repeat), title: '', body: '', extra: { medId: 'm1', scheduledFor: DUE } } })
   await r.syncReminders()
 }
 const until = async (cond: () => boolean) => {
@@ -83,7 +83,34 @@ describe('syncReminders', () => {
     expect(h.ln.schedule).toHaveBeenCalledTimes(1)
     const [n] = h.ln.schedule.mock.calls[0][0].notifications as Record<string, unknown>[]
     expect(n).toMatchObject({ channelId: 'dose-reminders', actionTypeId: 'dose', extra: { medId: 'm1', scheduledFor: DUE } })
-    expect(h.pending).toHaveLength(7)
+    expect(h.pending).toHaveLength(7 * 6) // each dose plus its 5 repeats
+  })
+
+  it('repeats every snooze length after the dose time and keeps them once it has rung', async () => {
+    const at = (c: unknown[][]) => (c[0] as { notifications: { id: number; schedule?: { at: Date } }[] }[])[0].notifications
+    await r.syncReminders()
+    const first = at(h.ln.schedule.mock.calls).filter((n) => n.schedule!.at.getTime() <= Date.parse(DUE) + 25 * 60_000)
+    expect(first.map((n) => n.schedule!.at.getTime() - Date.parse(DUE))).toEqual([0, 5, 10, 15, 20, 25].map((m) => m * 60_000))
+    vi.setSystemTime(Date.parse(DUE) + 7 * 60_000) // rang, and its first repeat too
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    h.ln.schedule.mockClear()
+    await r.syncReminders()
+    const left = at(h.ln.schedule.mock.calls).filter((n) => n.schedule!.at.getTime() <= Date.parse(DUE) + 25 * 60_000)
+    expect(left.map((n) => n.id)).toEqual([2, 3, 4, 5].map((k) => reminderId('m1', DUE, k)))
+  })
+
+  it('a dose already past when the phone first plans gets no repeats', async () => {
+    vi.setSystemTime(Date.parse(DUE) + 7 * 60_000)
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    await r.syncReminders()
+    const ids = h.ln.schedule.mock.calls[0][0].notifications.map((n) => n.id)
+    expect(ids).not.toContain(reminderId('m1', DUE, 2))
+  })
+
+  it('turning reminders off forgets what rang, so turning on again does not repeat old doses', async () => {
+    await r.syncReminders()
+    await r.setRemindersEnabled(false)
+    expect(localStorage.getItem('medtracker-reminder-rung')).toBeNull()
   })
 
   it('does nothing without notification permission', async () => {
@@ -180,6 +207,14 @@ describe('notification buttons', () => {
     const ats = h.ln.schedule.mock.calls.flatMap((c) => c[0].notifications.map((n) => n.schedule!.at.getTime()))
     expect(ats).toContain(Date.parse(DUE) + 6 * 60_000)
     expect(JSON.parse(localStorage.getItem('medtracker-reminder-actions')!)).toHaveLength(1) // retried later
+  })
+
+  it('Snooze on a repeat snoozes the dose', async () => {
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    vi.setSystemTime(Date.parse(DUE) + 11 * 60_000) // the second repeat just rang
+    await tap('snooze', 2)
+    expect(doses.snoozeDose).toHaveBeenCalledWith('d1', 5)
+    expect(JSON.parse(localStorage.getItem('medtracker-reminder-snoozes')!)).toEqual({ [reminderId('m1', DUE)]: Date.parse(DUE) + 16 * 60_000 })
   })
 })
 

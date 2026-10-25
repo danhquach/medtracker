@@ -8,7 +8,7 @@ import { sameTime } from '../data/offline/ops'
 import { subscribe } from '../data/offline/sync'
 import { getProfile } from '../data/profile'
 import { addDays, localDayRange, todayIn } from '../features/today/dayRange'
-import { planReminders } from './plan'
+import { planReminders, reminderId } from './plan'
 
 const CHANNEL = 'dose-reminders'
 const ACTION_TYPE = 'dose'
@@ -16,6 +16,7 @@ const DAYS = 7
 const ENABLED_KEY = 'medtracker-reminders-on'
 const SNOOZES_KEY = 'medtracker-reminder-snoozes'
 const ACTIONS_KEY = 'medtracker-reminder-actions'
+const RUNG_KEY = 'medtracker-reminder-rung'
 
 // The plugin check, not just "native": the live-site app runs new web code on whatever APK is
 // installed, and one without the plugin falls back to the web path instead of crashing.
@@ -51,6 +52,12 @@ function liveSnoozes(now: number): Record<number, number> {
   return Object.fromEntries(Object.entries(all).filter(([, until]) => until > now))
 }
 
+/** Reminders this phone set (reminder id -> time), kept a day so their repeats survive a re-plan. */
+function liveRung(now: number): Record<number, number> {
+  const all = read<Record<number, number>>(RUNG_KEY, {})
+  return Object.fromEntries(Object.entries(all).filter(([, at]) => at > now - 86_400_000))
+}
+
 export const remindersEnabled = (): boolean => read(ENABLED_KEY, false)
 
 export async function nativeDeviceState(): Promise<'on' | 'off' | 'denied'> {
@@ -69,6 +76,7 @@ export async function enableReminders(): Promise<'ok' | 'denied'> {
 
 export async function setRemindersEnabled(on: boolean): Promise<void> {
   write(ENABLED_KEY, on || null)
+  if (!on) write(RUNG_KEY, null) // cancelled before they rang: no repeats when turned back on
   // Queued, so a sync already loading data can't re-schedule after this cancel.
   await (on ? syncReminders() : enqueue(cancelAll))
 }
@@ -79,6 +87,7 @@ export async function forgetReminders(): Promise<void> {
   const clear = async () => {
     write(SNOOZES_KEY, null)
     write(ACTIONS_KEY, null)
+    write(RUNG_KEY, null)
     await cancelAll()
     await (await plugin()).LocalNotifications.removeAllDeliveredNotifications()
   }
@@ -117,14 +126,15 @@ async function runSync(): Promise<void> {
     const tz = profile.time_zone
     const today = todayIn(tz, now)
     const doses = await listDoses(localDayRange(addDays(today, -1), tz).from, localDayRange(addDays(today, DAYS), tz).to)
-    input = { meds, schedules, doses, timeZone: tz }
+    input = { meds, schedules, doses, timeZone: tz, repeatMinutes: profile.snooze_minutes }
   } catch (e) {
     // Signed out, or no data yet: keep what is scheduled rather than wiping it.
     console.error('could not load data for reminders', e)
     return
   }
   const snoozes = liveSnoozes(now)
-  const plan = planReminders({ ...input, nowMs: now, days: DAYS, snoozes })
+  const rung = liveRung(now)
+  const plan = planReminders({ ...input, nowMs: now, days: DAYS, snoozes, rung })
   // A reminder already showing goes away once its dose is marked or snoozed (it rings again later).
   const { notifications: shown } = await ln.getDeliveredNotifications()
   const done = shown.filter((n) => {
@@ -151,6 +161,8 @@ async function runSync(): Promise<void> {
       })),
     })
   }
+  for (const r of plan) if (r.repeat === 0) rung[r.id] = r.at
+  write(RUNG_KEY, rung)
   const keep = new Set(plan.map((r) => r.id))
   const stale = before.filter((n) => !keep.has(n.id))
   if (stale.length) await ln.cancel({ notifications: stale.map(({ id }) => ({ id })) })
@@ -194,11 +206,12 @@ function onAction({ actionId, notification }: ActionPerformed): Promise<void> {
   return enqueue(async () => {
     const now = Date.now()
     const snoozes = liveSnoozes(now)
+    const id = reminderId(medId, scheduledFor) // the dose's, also when tapped on one of its repeats
     let minutes: (typeof SNOOZE_MINUTES)[number] = 10
     if (actionId === 'snooze') {
       minutes = await getProfile().then((p) => p.snooze_minutes, () => minutes) // offline, nothing cached: default
-      snoozes[notification.id] = now + minutes * 60_000 // rings again even if the server can't be told
-    } else delete snoozes[notification.id]
+      snoozes[id] = now + minutes * 60_000 // rings again even if the server can't be told
+    } else delete snoozes[id]
     write(SNOOZES_KEY, snoozes)
     write(ACTIONS_KEY, [...read<SavedAction[]>(ACTIONS_KEY, []), { action: actionId, medId, scheduledFor, minutes, at: now }])
   })

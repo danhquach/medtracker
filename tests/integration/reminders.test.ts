@@ -164,6 +164,58 @@ describe('claim_due_doses', () => {
   })
 })
 
+describe('claim_due_doses repeats (MT-79)', () => {
+  // Default profile Snooze length is 10 minutes.
+  const repeats = async (id: string) =>
+    (await admin().from('dose_events').select('reminder_repeats').eq('id', id).single()).data!.reminder_repeats as number | null
+  const lastAlert = async (id: string, min: number) =>
+    expect((await admin().from('dose_events').update({ notified_at: ago(min) }).eq('id', id)).error).toBeNull()
+
+  it('an unanswered dose rings again every Snooze length, 5 times, then stops', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(30) })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    await lastAlert(dose, 9)
+    expect(await claim(a)).toHaveLength(0)
+    for (let k = 1; k <= 5; k++) {
+      await lastAlert(dose, 10)
+      expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+      expect(await repeats(dose)).toBe(k)
+    }
+    await lastAlert(dose, 60)
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('a backfilled dose (notified without a reminder) never repeats', async () => {
+    const med = await mkMed(a)
+    await mkDose(a, med, { scheduled_for: ago(60), notified_at: ago(30) })
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('a snooze restarts the count; taken ends it and an undo stays quiet', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(60), notified_at: ago(1), reminder_repeats: 5 })
+    expect((await a.client.rpc('snooze_dose', { p_dose: dose, p_minutes: 5 })).error).toBeNull()
+    expect((await admin().from('dose_events').update({ snoozed_until: ago(1) }).eq('id', dose)).error).toBeNull()
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    expect(await repeats(dose)).toBe(0)
+    expect((await a.client.rpc('set_dose_status', { p_dose: dose, p_status: 'taken' })).error).toBeNull()
+    expect(await repeats(dose)).toBeNull()
+    expect((await a.client.rpc('set_dose_status', { p_dose: dose, p_status: 'pending' })).error).toBeNull()
+    await lastAlert(dose, 30)
+    expect(await claim(a)).toHaveLength(0)
+  })
+
+  it('a failed repeat is retried without using up another repeat', async () => {
+    const med = await mkMed(a)
+    const dose = await mkDose(a, med, { scheduled_for: ago(60), notified_at: ago(10), reminder_repeats: 2 })
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    expect((await admin().rpc('unclaim_doses', { p_ids: [dose] })).error).toBeNull()
+    expect((await claim(a)).map((x) => x.dose_id)).toEqual([dose])
+    expect(await repeats(dose)).toBe(3)
+  })
+})
+
 describe('snooze_dose', () => {
   it('owner snoozes a pending dose; invalid minutes rejected; others cannot', async () => {
     const med = await mkMed(a)

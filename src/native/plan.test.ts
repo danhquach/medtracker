@@ -90,6 +90,52 @@ describe('planReminders', () => {
     expect(run({ days: 7, max: 3 })).toHaveLength(3)
   })
 
+  describe('repeats', () => {
+    const DUE = '2026-10-21T00:00:00.000Z'
+    const one = { schedules: [sched({ times: ['20:00:00'] })], days: 1, repeatMinutes: 15 }
+    const min = (rows: { at: number }[]) => rows.map((r) => (r.at - Date.parse(DUE)) / 60_000)
+
+    it('ring every repeatMinutes after the dose time, 5 times, each with its own id', () => {
+      const rows = run(one)
+      expect(min(rows)).toEqual([0, 15, 30, 45, 60, 75])
+      expect(rows.map((r) => r.repeat)).toEqual([0, 1, 2, 3, 4, 5])
+      expect(rows.map((r) => r.id)).toEqual([0, 1, 2, 3, 4, 5].map((k) => reminderId('m1', DUE, k)))
+      expect(new Set(rows.map((r) => r.id)).size).toBe(6)
+    })
+
+    it('none without repeatMinutes', () => {
+      expect(min(run({ ...one, repeatMinutes: undefined }))).toEqual([0])
+    })
+
+    it('after the dose rang on this phone, only the repeats still ahead', () => {
+      const rung = { [reminderId('m1', DUE)]: Date.parse(DUE) }
+      expect(min(run({ ...one, nowMs: Date.parse(DUE) + 40 * 60_000, rung }))).toEqual([45, 60, 75])
+    })
+
+    it('a dose already past that this phone never set stays quiet', () => {
+      expect(run({ ...one, nowMs: Date.parse(DUE) + 40 * 60_000 })).toEqual([])
+    })
+
+    it('a snooze starts them over from the snooze time', () => {
+      const doses = [dose(DUE, { snoozed_until: '2026-10-21T00:50:00.000Z' })]
+      const rung = { [reminderId('m1', DUE)]: Date.parse(DUE) }
+      expect(min(run({ ...one, nowMs: Date.parse(DUE) + 40 * 60_000, rung, doses }))).toEqual([50, 65, 80, 95, 110, 125])
+    })
+
+    it('stop once the dose is taken or skipped', () => {
+      const rung = { [reminderId('m1', DUE)]: Date.parse(DUE) }
+      for (const status of ['taken', 'skipped'] as const) {
+        expect(run({ ...one, nowMs: Date.parse(DUE) + 20 * 60_000, rung, doses: [dose(DUE, { status })] })).toEqual([])
+      }
+    })
+
+    it('over the cap, dose times come before repeats', () => {
+      const rows = run({ days: 2, repeatMinutes: 15, max: 4 })
+      expect(rows.filter((r) => r.repeat === 0)).toHaveLength(3)
+      expect(min(rows.filter((r) => r.repeat > 0))).toEqual([15])
+    })
+  })
+
   it('ids are stable, positive 31-bit ints and differ per dose', () => {
     const a = reminderId('m1', '2026-10-21T00:00:00.000Z')
     expect(a).toBe(reminderId('m1', '2026-10-21T00:00:00.000Z'))
