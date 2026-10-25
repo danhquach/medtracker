@@ -13,6 +13,7 @@ import MedCard from './MedCard'
 import MedForm from './MedForm'
 import { isStopped, nextDoseText } from './summary'
 import { Button } from '../../components/Button'
+import { Notice } from '../../components/layout'
 
 export default function MedsList() {
   const profile = useProfile()
@@ -126,10 +127,8 @@ export default function MedsList() {
 
   return (
     <main className="has-fab">
-      {(error ?? loadError) && <p role="alert">{error ?? loadError}</p>}
-      <p role="status" className="notice">
-        {notice}
-      </p>
+      {(error ?? loadError) && <Notice tone="error">{error ?? loadError}</Notice>}
+      <Notice>{notice}</Notice>
       {meds.length === 0 && <Empty>No medications yet. Tap + Add to create one.</Empty>}
       <ul className="dose-list">
         {sorted.map((m) => (

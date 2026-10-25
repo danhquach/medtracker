@@ -3,6 +3,7 @@ import { refillState } from '../../../supabase/functions/_shared/refill'
 import type { Medication, Schedule } from '../../lib/types'
 import { scheduleSummary, stockUnit } from './summary'
 import { Button } from '../../components/Button'
+import { Card, Chip } from '../../components/layout'
 
 export default function MedCard({
   med,
@@ -45,7 +46,7 @@ export default function MedCard({
   }
 
   return (
-    <li className={`med-card${med.paused ? ' is-paused' : ''}`}>
+    <Card className={`med-card${med.paused ? ' is-paused' : ''}`}>
       <div>
         <strong>{med.name}</strong>
         {med.strength && <span className="muted"> {med.strength}</span>}
@@ -54,12 +55,12 @@ export default function MedCard({
       {(med.stock !== null || med.paused || stopped) && (
         <div>
           {med.stock !== null && (
-            <span className={`chip${low ? ' chip-low' : ''}`}>
+            <Chip tone={low ? 'low' : undefined}>
               {med.stock} {stockUnit(med.form, med.stock)} left
-            </span>
+            </Chip>
           )}
-          {med.paused && <span className="chip">Paused</span>}
-          {stopped && <span className="chip">Stopped</span>}
+          {med.paused && <Chip>Paused</Chip>}
+          {stopped && <Chip>Stopped</Chip>}
         </div>
       )}
       <div className="row card-actions">
@@ -129,6 +130,6 @@ export default function MedCard({
           </Button>
         </form>
       )}
-    </li>
+    </Card>
   )
 }

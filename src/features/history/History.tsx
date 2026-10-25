@@ -10,6 +10,7 @@ import LoadError from '../auth/LoadError'
 import { useProfileState } from '../auth/useProfile'
 import { addDays, localDayRange, timeLabel, todayIn } from '../today/dayRange'
 import { Button } from '../../components/Button'
+import { Chip, Notice, Row, RowGroup } from '../../components/layout'
 
 const STATUS: Record<DoseStatus, { Icon: typeof CheckIcon; label: string }> = {
   taken: { Icon: CheckIcon, label: 'Taken' },
@@ -147,7 +148,7 @@ function MonthView({ meds, tz, today }: { meds: Medication[]; tz: string; today:
           ›
         </Button>
       </div>
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       {!error && !doses && <Loading />}
       {doses && (
         <table className="month-grid" aria-labelledby="month-title">
@@ -207,20 +208,24 @@ function MonthView({ meds, tz, today }: { meds: Medication[]; tz: string; today:
           {pickedDoses.length === 0 ? (
             <p className="muted">No doses on this day.</p>
           ) : (
-            <ul className="history-list">
+            <RowGroup as="ul" className="history-list">
               {pickedDoses.map((d) => {
                 const shown = shownStatus(d, tz, today)
                 return (
-                  <li key={d.id} className="history-item">
-                    <div>
-                      <Link to={`/history/${d.medication_id}`}>{names.get(d.medication_id)}</Link>{' '}
-                      <span>{timeLabel(d.scheduled_for, tz)}</span> <StatusIcon status={shown} />{' '}
-                      <span className={`status-${shown}`}>{STATUS[shown].label}</span>
-                    </div>
-                  </li>
+                  <Row
+                    key={d.id}
+                    as="li"
+                    name={
+                      <>
+                        <Link to={`/history/${d.medication_id}`}>{names.get(d.medication_id)}</Link>{' '}
+                        <span>{timeLabel(d.scheduled_for, tz)}</span> <StatusIcon status={shown} />{' '}
+                        <span className={`status-${shown}`}>{STATUS[shown].label}</span>
+                      </>
+                    }
+                  />
                 )
               })}
-            </ul>
+            </RowGroup>
           )}
         </section>
       )}
@@ -311,22 +316,28 @@ export default function History() {
       <main className="stack">
         <h2>
           {detail.name} — last 30 days
-          {detail.paused && <span className="chip chip-inline">Paused</span>}
+          {detail.paused && <Chip inline>Paused</Chip>}
         </h2>
-        {saveError && <p role="alert">{saveError}</p>}
+        {saveError && <Notice tone="error">{saveError}</Notice>}
         {list.length === 0 ? (
           <p className="muted">No doses in the last 30 days.</p>
         ) : (
-          <ul className="history-list">
+          <RowGroup as="ul" className="history-list">
             {list.map((d) => {
               const shown = shownStatus(d, tz, today)
               const when = `${dayHeading(dayOf(d.scheduled_for, tz))} ${timeLabel(d.scheduled_for, tz)}`
               return (
-                <li key={d.id} className="history-item">
-                  <div>
-                    <span>{when}</span> <StatusIcon status={shown} />{' '}
-                    <span className={`status-${shown}`}>{STATUS[shown].label}</span>
-                  </div>
+                <Row
+                  key={d.id}
+                  as="li"
+                  wide
+                  name={
+                    <>
+                      <span>{when}</span> <StatusIcon status={shown} />{' '}
+                      <span className={`status-${shown}`}>{STATUS[shown].label}</span>
+                    </>
+                  }
+                >
                   <div className="row" role="group" aria-label={`Change dose ${when}`}>
                     {CHOICES.map((c) => (
                       <Button
@@ -339,10 +350,10 @@ export default function History() {
                       </Button>
                     ))}
                   </div>
-                </li>
+                </Row>
               )
             })}
-          </ul>
+          </RowGroup>
         )}
       </main>
     )
@@ -355,7 +366,7 @@ export default function History() {
   }
   return (
     <main className="stack">
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       {!error && ordered.length === 0 && <Empty>No medications yet.</Empty>}
       {ordered.length > 0 && (
         <>
@@ -389,7 +400,7 @@ export default function History() {
                 <tr key={m.id} className={m.paused ? 'is-paused' : undefined}>
                   <th scope="row">
                     <Link to={`/history/${m.id}`}>{m.name}</Link>
-                    {m.paused && <span className="chip chip-inline">Paused</span>}
+                    {m.paused && <Chip inline>Paused</Chip>}
                   </th>
                   {days.map((d) => (
                     <td key={d}>

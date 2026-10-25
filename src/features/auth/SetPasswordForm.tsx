@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { setPassword } from './auth'
 import { Button } from '../../components/Button'
+import { Notice } from '../../components/layout'
 import { TextField } from '../../components/Field'
 import { PASSWORD_RULE, passwordError } from './validate'
 
@@ -30,7 +31,7 @@ export default function SetPasswordForm({ onDone }: { onDone?: () => void }) {
     }
   }
 
-  if (done) return <p role="status">Password set.</p>
+  if (done) return <Notice>Password set.</Notice>
   return (
     <form className="stack" onSubmit={submit} noValidate ref={formRef}>
       <h3>Set your password</h3>
@@ -45,7 +46,7 @@ export default function SetPasswordForm({ onDone }: { onDone?: () => void }) {
         onChange={(e) => setPw(e.target.value)}
         error={fieldError}
       />
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       <Button type="submit" variant="primary">
         Set your password
       </Button>

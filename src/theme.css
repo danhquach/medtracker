@@ -257,7 +257,7 @@ button.link {
   padding: 12px;
 }
 
-/* Settings: grouped cards of rows, like a phone's settings screen. */
+/* Settings sections. Shared RowGroup / Row (components/layout): grouped cards of rows, like a phone's settings screen. */
 main.settings {
   gap: 24px;
 }
@@ -269,21 +269,21 @@ main.settings {
   color: var(--text-muted);
 }
 
-.settings-card {
+.row-group {
   background: var(--surface);
   border-radius: 12px;
 }
 
-.settings-card > * + * {
+.row-group > * + * {
   border-top: 1px solid var(--divider);
 }
 
-.settings-card > p {
+.row-group > p {
   margin: 0;
   padding: 14px 16px;
 }
 
-.setting {
+.list-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -291,36 +291,36 @@ main.settings {
   min-height: 56px;
 }
 
-.setting.wide {
+.list-row.wide {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
 }
 
-.setting-text {
+.list-row-text {
   flex: 1;
   min-width: 0;
 }
 
-.setting-name {
+.list-row-name {
   display: block;
   margin: 0;
 }
 
-.setting-desc {
+.list-row-desc {
   margin: 2px 0 0;
   font-size: 0.9rem;
   color: var(--text-muted);
 }
 
-.setting select {
+.list-row select {
   width: auto;
   margin: 0;
   min-height: 44px;
 }
 
-.setting.wide input,
-.setting.wide select {
+.list-row.wide input,
+.list-row.wide select {
   width: 100%;
 }
 
@@ -487,15 +487,19 @@ input[role='switch']:disabled {
   padding: 0;
 }
 
+/* Shared Card (components/layout): one raised box per list item. */
+.card {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
 .dose-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
 }
 
 .status {
@@ -657,10 +661,6 @@ button.quiet {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: var(--surface);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
 }
 
 .med-card.is-paused {
@@ -768,6 +768,7 @@ fieldset {
 }
 .history-list {
   list-style: none;
+  margin: 0;
   padding: 0;
 }
 .month-nav {
@@ -819,13 +820,6 @@ fieldset {
 .month-day-marks svg {
   width: 12px;
   height: 12px;
-}
-.history-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--surface);
 }
 
 .field-error {

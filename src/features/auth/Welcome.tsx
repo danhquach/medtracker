@@ -3,6 +3,7 @@ import { continueAsGuest } from './auth'
 import CredentialsForm from './CredentialsForm'
 import EmailLinkNotice from './EmailLinkNotice'
 import { Button } from '../../components/Button'
+import { Notice } from '../../components/layout'
 
 export default function Welcome() {
   const [view, setView] = useState<'menu' | 'signup' | 'signin'>('menu')
@@ -38,7 +39,7 @@ export default function Welcome() {
         </Button>
         <p className="muted">No profile needed to start. Your data stays on this device until you create a profile.</p>
       </div>
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
     </main>
   )
 }

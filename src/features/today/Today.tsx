@@ -19,6 +19,7 @@ import { addDays, dayParam, localDayRange, timeLabel, todayIn } from './dayRange
 import DoseRow, { UpcomingRow } from './DoseRow'
 import NeedsAttention from './NeedsAttention'
 import WeekStrip from './WeekStrip'
+import { Notice } from '../../components/layout'
 
 export default function Today() {
   const { profile, error: profileError, retry: retryProfile } = useProfileState()
@@ -225,7 +226,7 @@ export default function Today() {
     <main>
       {today && selected && <WeekStrip today={today} selected={selected} onSelect={pick} />}
       {profileError && !profile && <LoadError message={profileError} onRetry={retryProfile} />}
-      {error && <p role="alert">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       {profile && !loaded && !error && <Loading />}
       {profile && loaded && nothing && !error && (
         <Empty action={meds.length === 0 && <Link to="/meds/new">Add a med</Link>}>Nothing scheduled for this day.</Empty>
