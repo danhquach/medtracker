@@ -156,6 +156,8 @@ async function runSync(): Promise<void> {
         channelId: CHANNEL,
         actionTypeId: ACTION_TYPE,
         autoCancel: true,
+        // One per dose: when a repeat fires, the patched plugin clears the shown one in its group.
+        group: `dose-${reminderId(r.medId, r.scheduledFor)}`,
         extra: { medId: r.medId, scheduledFor: r.scheduledFor },
         schedule: { at: new Date(r.at), allowWhileIdle: true },
       })),

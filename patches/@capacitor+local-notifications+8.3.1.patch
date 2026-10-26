@@ -1,0 +1,23 @@
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
+index 52def58..11c214d 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
++++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
+@@ -38,6 +38,18 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+         val storage = NotificationStorage(context)
+         val notificationJson = storage.getSavedNotificationAsJSObject(id.toString())
+         LocalNotificationsPlugin.fireReceived(notificationJson)
++        // MedTracker (MT-125): a repeat replaces the reminder already shown for the same dose
++        // (same group) instead of stacking a second one next to it. Its record goes as on a swipe.
++        notification.group?.let { group ->
++            notificationManager.activeNotifications
++                .filter { it.id != id && it.notification.group == group }
++                .forEach {
++                    notificationManager.cancel(it.tag, it.id)
++                    if (LocalNotificationManager.isSafeToForget(storage.getSavedNotification(it.id.toString()))) {
++                        storage.deleteNotification(it.id.toString())
++                    }
++                }
++        }
+         notificationManager.notify(id, notification)
+         rescheduleNotificationIfNeeded(context, intent, id)
+         // The notification's record stays in storage after firing (matching the
