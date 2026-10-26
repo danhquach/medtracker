@@ -75,6 +75,7 @@ const UNITS = {
   // Spelled-out units from the natural products list.
   MILLIGRAM: 'mg', MILLIGRAMS: 'mg', MICROGRAM: 'mcg', MICROGRAMS: 'mcg', GRAM: 'g', GRAMS: 'g',
   MILLILITRE: 'mL', MILLILITRES: 'mL', MILLILITER: 'mL', MILLILITERS: 'mL', 'INTERNATIONAL UNITS': 'IU',
+  PERCENT: '%', ['µg'.toUpperCase()]: 'mcg',
 }
 const amount = ({ strength, unit }) =>
   [strength.trim(), UNITS[unit.trim().toUpperCase()] ?? unit.trim()].filter(Boolean).join(' ')
@@ -150,22 +151,27 @@ export function buildNpn(licences, ingredients) {
   for (const l of licences) {
     if (!/^\d{8}$/.test(l.licence_number)) continue
     const best = byNpn.get(l.licence_number)
+    // Within one licence, a named row beats an empty one and the primary name beats the rest.
+    const nameRank = (r) => (r.product_name?.trim() ? 2 : 0) + (r.flag_primary_name === 1 ? 1 : 0)
     const better = !best ||
-      (l.lnhpd_id === best.lnhpd_id ? l.flag_primary_name > best.flag_primary_name : (l.revised_date ?? '') > (best.revised_date ?? ''))
+      (l.lnhpd_id === best.lnhpd_id ? nameRank(l) > nameRank(best) : (l.revised_date ?? '') > (best.revised_date ?? ''))
     if (better) byNpn.set(l.licence_number, l)
   }
   const products = {}
   for (const npn of [...byNpn.keys()].sort()) {
     const l = byNpn.get(npn)
-    const seen = new Set()
-    const ings = []
-    for (const i of ingredients.get(l.lnhpd_id) ?? []) {
+    const rows = (ingredients.get(l.lnhpd_id) ?? []).map((i) => {
       const range = i.quantity_maximum ? `${i.quantity_minimum}-${i.quantity_maximum}` : ''
       const strength = i.quantity ? String(i.quantity) : range
-      const ing = { name: i.ingredient_name ?? '', strength, unit: strength ? i.quantity_unit_of_measure ?? '' : '' }
+      return { name: i.ingredient_name ?? '', strength, unit: strength ? i.quantity_unit_of_measure ?? '' : '' }
+    })
+    // A potency-only row (no quantity) adds nothing when the same ingredient has a quantity, wherever it comes.
+    const quantified = new Set(rows.filter((r) => r.strength).map((r) => r.name))
+    const seen = new Set()
+    const ings = []
+    for (const ing of rows) {
       const key = `${ing.name}|${ing.strength}|${ing.unit}`
-      // A potency-only row (no quantity) adds nothing once the ingredient is listed.
-      if (seen.has(key) || (!ing.strength && ings.some((x) => x.name === ing.name))) continue
+      if (seen.has(key) || (!ing.strength && quantified.has(ing.name))) continue
       seen.add(key)
       ings.push(ing)
     }
@@ -203,9 +209,14 @@ async function download(url, dest) {
 
 const fetchJson = (url) => fetchWithRetry(url, (res) => res.json(), 7)
 
+// A few products whose ingredients still fail after every retry are listed without a strength
+// rather than throwing away a 1 h 45 min run; more than this many means the API is down.
+const MAX_INGREDIENT_FAILURES = 100
+
 async function fetchIngredients(ids) {
   const out = new Map()
   const queue = [...ids]
+  const failed = []
   let done = 0
   let nextAt = 0
   const worker = async () => {
@@ -215,13 +226,23 @@ async function fetchIngredients(ids) {
       const wait = Math.max(0, nextAt - Date.now())
       nextAt = Date.now() + wait + 1000 / LNHPD_PER_SECOND
       if (wait) await new Promise((r) => setTimeout(r, wait))
-      const body = await fetchJson(`${LNHPD}MedicinalIngredient/?lang=en&type=json&id=${id}`)
-      if (!Array.isArray(body?.data)) throw new Error(`MedicinalIngredient ${id}: unexpected response`)
-      out.set(id, body.data)
+      try {
+        const body = await fetchJson(`${LNHPD}MedicinalIngredient/?lang=en&type=json&id=${id}`)
+        if (!Array.isArray(body?.data)) throw new Error(`MedicinalIngredient ${id}: unexpected response`)
+        out.set(id, body.data)
+      } catch (err) {
+        failed.push(id)
+        console.error(`NPN ingredients skipped: ${err.message}`)
+        if (failed.length > MAX_INGREDIENT_FAILURES) {
+          queue.length = 0
+          throw new Error(`more than ${MAX_INGREDIENT_FAILURES} ingredient lookups failed`)
+        }
+      }
       if (++done % 10000 === 0) console.log(`NPN ingredients: ${done}/${ids.length}`)
     }
   }
   await Promise.all(Array.from({ length: LNHPD_WORKERS }, worker))
+  if (failed.length) console.log(`NPN ingredients: ${failed.length} products listed without a strength (ids ${failed.join(', ')})`)
   return out
 }
 
@@ -240,11 +261,16 @@ const readRows = (zip, name) =>
   execFileSync('unzip', ['-p', zip, name], { maxBuffer: 1 << 30 }).toString('utf8')
     .split(/\r?\n/).filter(Boolean).map(parseCsvLine)
 
-// Writes next to the target, then renames, so a crash never leaves a half-written file.
-const writeAtomic = (url, text) => {
-  const path = fileURLToPath(url)
-  writeFileSync(`${path}.tmp`, text)
-  renameSync(`${path}.tmp`, path)
+// Writes every file next to its target first, then renames them all, so a crash never leaves a
+// half-written file and the lists and dataVersion.ts change together.
+const writeAllAtomic = (files) => {
+  const paths = files.map(([url]) => fileURLToPath(url))
+  try {
+    files.forEach(([, text], i) => writeFileSync(`${paths[i]}.tmp`, text))
+    for (const path of paths) renameSync(`${path}.tmp`, path)
+  } finally {
+    for (const path of paths) rmSync(`${path}.tmp`, { force: true })
+  }
 }
 
 async function main() {
@@ -263,11 +289,13 @@ async function main() {
     const root = new URL('../', import.meta.url)
     mkdirSync(new URL('public/products/', root), { recursive: true })
     mkdirSync(new URL('src/features/dinLookup/', root), { recursive: true })
-    writeAtomic(new URL('public/products/din.json', root), listJson(generatedAt, din))
-    if (npn) writeAtomic(new URL('public/products/npn.json', root), listJson(generatedAt, npn))
-    writeAtomic(new URL('src/features/dinLookup/dataVersion.ts', root),
-      '// Generated by scripts/build-product-data.mjs. Do not edit by hand.\n' +
-      `export const PRODUCT_DATA: { generatedAt: string; lists: ('din' | 'npn')[] } = { generatedAt: '${generatedAt}', lists: ${npn ? "['din', 'npn']" : "['din']"} }\n`)
+    writeAllAtomic([
+      [new URL('public/products/din.json', root), listJson(generatedAt, din)],
+      ...(npn ? [[new URL('public/products/npn.json', root), listJson(generatedAt, npn)]] : []),
+      [new URL('src/features/dinLookup/dataVersion.ts', root),
+        '// Generated by scripts/build-product-data.mjs. Do not edit by hand.\n' +
+        `export const PRODUCT_DATA: { generatedAt: string; lists: ('din' | 'npn')[] } = { generatedAt: '${generatedAt}', lists: ${npn ? "['din', 'npn']" : "['din']"} }\n`],
+    ])
     console.log(`din.json: ${Object.keys(din).length} products, as of ${generatedAt}`)
     if (npn) console.log(`npn.json: ${Object.keys(npn).length} products (${Object.values(npn).filter((p) => p.hm).length} DIN-HM)`)
   } finally {

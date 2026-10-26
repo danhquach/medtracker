@@ -124,12 +124,26 @@ describe('build-product-data (MT-100)', () => {
     expect(out['80000003'].strength).toBe('Ginkgo biloba 60 mg, Examplum 1-2 mg')
   })
 
+  it('buildNpn drops a potency-only row even when it comes before the quantified one', () => {
+    const out = buildNpn(
+      [licence(1, '80000006', 'Garlic')],
+      new Map([[1, [ing('Allium sativum', 0, ''), ing('Allium sativum', 500, 'mg'), ing('Examplum', 0, '')]]]),
+    )
+    expect(out['80000006'].strength).toBe('Allium sativum 500 mg, Examplum')
+  })
+
+  it('buildNpn falls back to a named row when the primary name is empty', () => {
+    const out = buildNpn([licence(1, '80000007', ' '), licence(1, '80000007', 'Named', { flag_primary_name: 0 })], new Map())
+    expect(out['80000007'].name).toBe('Named')
+  })
+
   it('buildNpn lists the first 3 ingredients, then "+N more", with spelled-out units shortened', () => {
     const out = buildNpn(
       [licence(1, '80000005', 'Multi')],
       new Map([[1, [ing('A', 1, 'milligrams'), ing('B', 2, 'Micrograms'), ing('C', 3, 'International Units'), ing('D', 4, 'mg'), ing('E', 5, 'mg')]]]),
     )
     expect(out['80000005'].strength).toBe('A 1 mg, B 2 mcg, C 3 IU, +2 more')
+    expect(formatStrength([{ name: 'A', strength: '5', unit: 'µg' }, { name: 'B', strength: '20', unit: 'percent' }])).toBe('A 5 mcg, B 20 %')
   })
 
   it('buildNpn keeps the most recently revised licence when one number has two', () => {

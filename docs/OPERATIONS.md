@@ -185,11 +185,11 @@ Add Med looks a DIN or NPN up in copies of Health Canada's Drug Product Database
 node scripts/build-product-data.mjs
 ```
 
-1. The script downloads the four DPD extracts and the natural products list, then fetches each natural product's ingredients (about 1 hour 45 minutes, paced so Health Canada's API isn't flooded). It rewrites both JSON files and `src/features/dinLookup/dataVersion.ts`. A failed download exits non-zero and leaves all three files untouched.
+1. The script downloads the four DPD extracts and the natural products list, then fetches each natural product's ingredients (about 1 hour 45 minutes, paced so Health Canada's API isn't flooded). It rewrites both JSON files and `src/features/dinLookup/dataVersion.ts`. A failed download exits non-zero and leaves all three files untouched. A few products whose ingredients still fail after retries are listed without a strength and named in the output; more than 100 failures stops the run.
 2. Check the output lines (`din.json: <n> products, as of <date>` and `npn.json: <n> products (<n> DIN-HM)`). The counts should be close to the last refresh (DIN 57,890 and NPN 153,643 on 2026-10-26), and the files about 8 MB and 21 MB. A big drop means a source changed: don't commit. Check `gzip -c public/products/npn.json | wc -c` stays under about 5 MB (4.2 MB on 2026-10-26).
 3. Run `npm test`, then commit the files through a PR.
 
-If the natural products API is down, `node scripts/build-product-data.mjs --din-only` refreshes the DIN list alone, leaves `npn.json` as it is, and sets the shipped lists to DIN only, so an NPN shows "NPN lookup isn't available yet." Restore NPN with a full run once the API is back.
+If the natural products API is down, `node scripts/build-product-data.mjs --din-only` refreshes the DIN list alone, leaves `npn.json` as it is (committed but unused), and sets the shipped lists to DIN only, so an NPN shows "NPN lookup isn't available yet." Settings → About then shows the DIN refresh date. Restore NPN with a full run once the API is back.
 
 The new `generatedAt` date changes each file's `?v=` query, so devices download the new lists on their next lookup, and Settings → About shows the new date.
 

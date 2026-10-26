@@ -61,6 +61,17 @@ describe('useProductLists', () => {
     expect(lookupProduct('02242963', lists, PRODUCT_DATA.lists)).toEqual({ status: 'unavailable' })
   })
 
+  it.runIf(PRODUCT_DATA.lists.includes('npn'))('one list failing still loads the other, and an unmatched number is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.includes('npn.json') ? new Response('nope', { status: 503 }) : ok())))
+    const { result } = renderHook(() => useProductLists())
+    let lists!: Awaited<ReturnType<typeof result.current.ensure>>
+    await act(async () => { lists = await result.current.ensure() })
+    expect(lists.din.status).toBe('ready')
+    expect(lists.npn.status).toBe('error')
+    expect(lookupProduct('02242963', lists, PRODUCT_DATA.lists).status).toBe('match')
+    expect(lookupProduct('80012345', lists, PRODUCT_DATA.lists)).toEqual({ status: 'unavailable' })
+  })
+
   it('a non-OK response is an error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })))
     const { result } = renderHook(() => useProductLists())
