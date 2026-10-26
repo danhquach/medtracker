@@ -34,19 +34,20 @@ describe('useProductLists', () => {
   })
 
   it('lookup waits for an in-flight load', async () => {
-    let release!: () => void
-    const fetchMock = vi.fn(() => new Promise<Response>((r) => { release = () => r(ok()) }))
+    const pending: (() => void)[] = []
+    const release = () => { for (const r of pending.splice(0)) r() }
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => { pending.push(() => r(ok())) }))
     vi.stubGlobal('fetch', fetchMock)
     const { result } = renderHook(() => useProductLists())
     let first!: Promise<unknown>
     act(() => { first = result.current.ensure() })
     expect(result.current.lists.din.status).toBe('loading')
     let second: Awaited<ReturnType<typeof result.current.ensure>> | undefined
-    const pending = result.current.ensure().then((l) => { second = l })
+    const waiting = result.current.ensure().then((l) => { second = l })
     await Promise.resolve()
     expect(second).toBeUndefined()
-    await act(async () => { release(); await first; await pending })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => { release(); await first; await waiting })
+    expect(fetchMock).toHaveBeenCalledTimes(PRODUCT_DATA.lists.length)
     expect(lookupProduct('02242963', second!, PRODUCT_DATA.lists).status).toBe('match')
   })
 

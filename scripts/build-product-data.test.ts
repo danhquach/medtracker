@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { buildDin, formatStrength, mapForm, parseCsvLine, pickDpdRow } from './build-product-data.mjs'
+import { buildDin, buildNpn, formatStrength, mapForm, parseCsvLine, pickDpdRow } from './build-product-data.mjs'
 
 // Rows in DPD extract column order (see the header comment in build-product-data.mjs). Made-up products.
 const drug = (code: string, din: string, name: string) => [code, '', 'Human', din, name, '', 'N', '1', '1', '01-JAN-2025', '1', 'Humain', '', '']
@@ -20,6 +20,7 @@ describe('build-product-data (MT-100)', () => {
     expect(mapForm('SYRUP')).toBe('liquid')
     expect(mapForm('CREAM')).toBe('other')
     expect(mapForm('POWDER FOR SOLUTION')).toBe('other')
+    expect(mapForm('Softgel')).toBe('capsule')
   })
 
   it('formatStrength single ingredient is "500 mg"', () => {
@@ -78,5 +79,64 @@ describe('build-product-data (MT-100)', () => {
       ingred: [ingred('30', 'A', '1', 'MG'), ingred('31', 'B', '5', 'MG')],
     })
     expect(out['80012345']).toEqual({ name: 'MARKETED NAME', form: 'liquid', strength: '5 mg', discontinued: false })
+  })
+
+  // LNHPD rows in API field names (see the header comment in build-product-data.mjs). Made-up products.
+  const licence = (id: number, npn: string, name: string, extra: object = {}) => ({
+    lnhpd_id: id, licence_number: npn, product_name: name, dosage_form: 'Capsule', revised_date: '2024-01-01',
+    sub_submission_type_desc: 'Compendial', flag_primary_name: 1, flag_product_status: 1, ...extra,
+  })
+  const ing = (name: string, quantity: number, unit: string, extra: object = {}) => ({
+    ingredient_name: name, quantity, quantity_minimum: 0, quantity_maximum: 0, quantity_unit_of_measure: unit, ...extra,
+  })
+
+  it('buildNpn keys by 8-digit NPN and fills name, form and strength from the primary name', () => {
+    const out = buildNpn(
+      [licence(1, '80012345', 'Other Name', { flag_primary_name: 0 }), licence(1, '80012345', 'Exemple Glucosamine Étude')],
+      new Map([[1, [ing('Glucosamine sulfate', 500, 'mg'), ing('Chondroitin sulfate', 400, 'mg')]]]),
+    )
+    expect(out).toEqual({
+      '80012345': { name: 'Exemple Glucosamine Étude', form: 'capsule', strength: 'Glucosamine sulfate 500 mg, Chondroitin sulfate 400 mg', discontinued: false },
+    })
+  })
+
+  it('buildNpn keeps leading zeros and skips licences without an 8-digit number', () => {
+    const out = buildNpn([licence(1, '02212345', 'Transitional'), licence(2, '', 'No number')], new Map([[1, [ing('Examplum', 5, 'mg')]]]))
+    expect(Object.keys(out)).toEqual(['02212345'])
+    expect(out['02212345'].strength).toBe('5 mg')
+  })
+
+  it('buildNpn marks a DIN-HM licence with hm true and an inactive one discontinued', () => {
+    const out = buildNpn(
+      [licence(1, '80000001', 'Homeo', { sub_submission_type_desc: 'Homeopathic (Compendial)' }), licence(2, '80000002', 'Gone', { flag_product_status: 0 })],
+      new Map(),
+    )
+    expect(out['80000001']).toMatchObject({ hm: true, discontinued: false, strength: '' })
+    expect(out['80000002']).toMatchObject({ discontinued: true })
+    expect(out['80000002']).not.toHaveProperty('hm')
+  })
+
+  it('buildNpn collapses potency-only rows and shows a quantity range', () => {
+    const out = buildNpn(
+      [licence(1, '80000003', 'Ginkgo')],
+      new Map([[1, [ing('Ginkgo biloba', 60, 'mg'), ing('Ginkgo biloba', 0, ''), ing('Examplum', 0, 'mg', { quantity_minimum: 1, quantity_maximum: 2 })]]]),
+    )
+    expect(out['80000003'].strength).toBe('Ginkgo biloba 60 mg, Examplum 1-2 mg')
+  })
+
+  it('buildNpn lists the first 3 ingredients, then "+N more", with spelled-out units shortened', () => {
+    const out = buildNpn(
+      [licence(1, '80000005', 'Multi')],
+      new Map([[1, [ing('A', 1, 'milligrams'), ing('B', 2, 'Micrograms'), ing('C', 3, 'International Units'), ing('D', 4, 'mg'), ing('E', 5, 'mg')]]]),
+    )
+    expect(out['80000005'].strength).toBe('A 1 mg, B 2 mcg, C 3 IU, +2 more')
+  })
+
+  it('buildNpn keeps the most recently revised licence when one number has two', () => {
+    const out = buildNpn(
+      [licence(1, '80000004', 'Old', { revised_date: '2015-01-01' }), licence(2, '80000004', 'New', { revised_date: '2023-01-01' })],
+      new Map(),
+    )
+    expect(out['80000004'].name).toBe('New')
   })
 })
