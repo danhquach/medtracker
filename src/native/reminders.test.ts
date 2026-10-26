@@ -99,6 +99,16 @@ describe('syncReminders', () => {
     expect(left.map((n) => n.id)).toEqual([2, 3, 4, 5].map((k) => reminderId('m1', DUE, k)))
   })
 
+  it('a dose and its repeats share one group, so a repeat replaces the shown reminder (MT-125)', async () => {
+    await r.syncReminders()
+    const ns = h.ln.schedule.mock.calls[0][0].notifications as { id: number; group?: string; extra: { scheduledFor: string } }[]
+    const tonight = ns.filter((n) => n.extra.scheduledFor === DUE)
+    expect(tonight).toHaveLength(6)
+    expect(new Set(tonight.map((n) => n.group))).toEqual(new Set([`dose-${reminderId('m1', DUE)}`]))
+    const other = ns.find((n) => n.extra.scheduledFor !== DUE)!
+    expect(other.group).not.toBe(tonight[0].group) // another dose keeps its own notification
+  })
+
   it('a dose already past when the phone first plans gets no repeats', async () => {
     vi.setSystemTime(Date.parse(DUE) + 7 * 60_000)
     vi.mocked(doses.listDoses).mockResolvedValue([row()])
