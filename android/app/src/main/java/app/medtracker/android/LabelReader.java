@@ -10,7 +10,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -51,9 +54,14 @@ class LabelReader implements AutoCloseable {
         return blocks;
     }
 
-    static boolean hasNumber(List<String> blocks) {
-        for (String block : blocks) if (NUMBER.matcher(block).find()) return true;
-        return false;
+    /** The 8-digit numbers in the text, digits only. */
+    static Set<String> numbers(List<String> blocks) {
+        Set<String> found = new LinkedHashSet<>();
+        for (String block : blocks) {
+            Matcher m = NUMBER.matcher(block);
+            while (m.find()) found.add(m.group().replaceAll("\\D", ""));
+        }
+        return found;
     }
 
     @Override

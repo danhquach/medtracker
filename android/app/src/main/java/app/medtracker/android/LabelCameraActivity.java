@@ -37,7 +37,9 @@ import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -67,6 +69,9 @@ public class LabelCameraActivity extends AppCompatActivity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private LabelReader reader;
     private volatile boolean done;
+    // The numbers read in the previous frame: a frame only counts when it agrees, so a one-off misread
+    // (an 8 read as a 6) doesn't end the scan.
+    private Set<String> lastNumbers = Collections.emptySet();
 
     @Override
     protected void onCreate(Bundle state) {
@@ -154,7 +159,11 @@ public class LabelCameraActivity extends AppCompatActivity {
         frame.close();
         if (box == null) return;
         List<String> blocks = read(box);
-        if (blocks != null && LabelReader.hasNumber(blocks) && !done) {
+        if (blocks == null) return;
+        Set<String> numbers = LabelReader.numbers(blocks);
+        boolean agreed = !Collections.disjoint(numbers, lastNumbers);
+        lastNumbers = numbers;
+        if (agreed && !done) {
             done = true;
             runOnUiThread(() -> finishWith(blocks));
         }

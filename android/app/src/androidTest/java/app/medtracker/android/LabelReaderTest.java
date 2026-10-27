@@ -1,6 +1,6 @@
 package app.medtracker.android;
 
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.graphics.Bitmap;
@@ -11,6 +11,7 @@ import android.graphics.Typeface;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -44,7 +45,7 @@ public class LabelReaderTest {
             blocks = reader.read(label);
         }
 
-        assertTrue(LabelReader.hasNumber(blocks));
+        assertTrue(LabelReader.numbers(blocks).containsAll(Arrays.asList("02242963", "80058511")));
         StringBuilder all = new StringBuilder();
         for (String b : blocks) all.append(b).append('\n');
         String text = all.toString();
@@ -52,12 +53,11 @@ public class LabelReaderTest {
         assertTrue(text, text.contains("NPN 80058511"));
     }
 
-    // The camera stops on the first frame with a number, so a short or long digit run mustn't count.
+    // The camera stops when two frames read the same number, so only 8-digit numbers may count.
     @Test
-    public void hasNumberMatchesWhatThePageLooksFor() {
-        assertTrue(LabelReader.hasNumber(Arrays.asList("Otrivin", "DIN 0224 2963")));
-        assertTrue(LabelReader.hasNumber(Arrays.asList("NPN 80058511")));
-        assertFalse(LabelReader.hasNumber(Arrays.asList("LOT 1234567", "EXP 2027-05")));
-        assertFalse(LabelReader.hasNumber(Arrays.asList("123456789")));
+    public void numbersMatchWhatThePageLooksFor() {
+        assertEquals(Collections.singleton("02242963"), LabelReader.numbers(Arrays.asList("Otrivin", "DIN 0224 2963")));
+        assertEquals(Collections.singleton("80058511"), LabelReader.numbers(Arrays.asList("NPN 80058511")));
+        assertTrue(LabelReader.numbers(Arrays.asList("LOT 1234567", "EXP 2027-05", "123456789")).isEmpty());
     }
 }
