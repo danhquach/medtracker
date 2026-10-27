@@ -62,6 +62,7 @@ public class LabelCameraActivity extends AppCompatActivity {
     private PreviewView preview;
     private Box box;
     private ImageCapture capture;
+    private ImageAnalysis frames;
     private Button shutter;
     private TextView hint;
 
@@ -138,7 +139,7 @@ public class LabelCameraActivity extends AppCompatActivity {
                 p.setSurfaceProvider(preview.getSurfaceProvider());
                 capture = new ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build();
                 // Frames about as sharp as a photo's box crop, so label print is big enough to read.
-                ImageAnalysis frames = new ImageAnalysis.Builder()
+                frames = new ImageAnalysis.Builder()
                     .setResolutionSelector(new ResolutionSelector.Builder()
                         .setResolutionStrategy(new ResolutionStrategy(new Size(1920, 1440), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
                         .build())
@@ -210,6 +211,8 @@ public class LabelCameraActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         done = true;
+        // Stop frames first: one handed to a shut-down worker would throw.
+        if (frames != null) frames.clearAnalyzer();
         worker.execute(() -> {
             if (reader != null) reader.close();
         });
