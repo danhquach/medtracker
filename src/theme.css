@@ -1131,6 +1131,13 @@ details.more > summary {
   text-underline-offset: 3px;
 }
 
+/* Long unbroken names and strengths wrap inside the card instead of pushing the page sideways (MT-132, as MT-130). */
+.dose-name,
+.med-card > div:first-child,
+.attention p {
+  overflow-wrap: anywhere;
+}
+
 /* Offline / sync line under the header (SyncStatus). Hidden when everything is synced. */
 .sync-status {
   padding: 6px 16px;
