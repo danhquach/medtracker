@@ -1,5 +1,6 @@
 package app.medtracker.android;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.graphics.Bitmap;
@@ -9,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,12 +39,25 @@ public class LabelReaderTest {
         canvas.drawText("NPN 80058511", 500, 650, paint);
         canvas.restore();
 
-        List<LabelReader.Block> blocks = new LabelReader(InstrumentationRegistry.getInstrumentation().getTargetContext()).read(label);
+        List<String> blocks;
+        try (LabelReader reader = new LabelReader(InstrumentationRegistry.getInstrumentation().getTargetContext())) {
+            blocks = reader.read(label);
+        }
 
+        assertTrue(LabelReader.hasNumber(blocks));
         StringBuilder all = new StringBuilder();
-        for (LabelReader.Block b : blocks) all.append(b.text).append('\n');
+        for (String b : blocks) all.append(b).append('\n');
         String text = all.toString();
         assertTrue(text, text.contains("DIN 02242963"));
         assertTrue(text, text.contains("NPN 80058511"));
+    }
+
+    // The camera stops on the first frame with a number, so a short or long digit run mustn't count.
+    @Test
+    public void hasNumberMatchesWhatThePageLooksFor() {
+        assertTrue(LabelReader.hasNumber(Arrays.asList("Otrivin", "DIN 0224 2963")));
+        assertTrue(LabelReader.hasNumber(Arrays.asList("NPN 80058511")));
+        assertFalse(LabelReader.hasNumber(Arrays.asList("LOT 1234567", "EXP 2027-05")));
+        assertFalse(LabelReader.hasNumber(Arrays.asList("123456789")));
     }
 }

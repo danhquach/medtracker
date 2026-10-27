@@ -12,7 +12,9 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.content.Intent;
 import android.os.Bundle;
+import android.util.Size;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -22,26 +24,33 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * The label scan's camera (MT-122): a viewfinder with a box to put the DIN/NPN in. Takes one photo in
- * memory, keeps only the box (with a margin), and writes it to the file the caller names, upright.
- * Result: RESULT_OK with the photo, RESULT_CANCELED when closed, NO_CAMERA when it can't use the camera.
+ * The label scan's camera (MT-122): a viewfinder with a box to put the DIN/NPN in. Reads the box (with a
+ * margin) in each preview frame, one after another, and returns as soon as a frame has an 8-digit
+ * number; the shutter reads one full-quality photo instead, number or not. Frames and photos stay in
+ * memory. Result: RESULT_OK with EXTRA_BLOCKS (LabelReader's text), RESULT_CANCELED when closed,
+ * NO_CAMERA when it can't use the camera.
  */
 public class LabelCameraActivity extends AppCompatActivity {
 
-    static final String EXTRA_OUTPUT = "output";
+    static final String EXTRA_BLOCKS = "blocks";
     static final int NO_CAMERA = RESULT_FIRST_USER;
 
     // The box: a strip for one line such as "DIN 0224 2963", most of the screen wide and a quarter as tall.
@@ -52,6 +61,12 @@ public class LabelCameraActivity extends AppCompatActivity {
     private Box box;
     private ImageCapture capture;
     private Button shutter;
+    private TextView hint;
+
+    // Tesseract runs here, one read at a time; `done` stops frame reads once a result is on its way.
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private LabelReader reader;
+    private volatile boolean done;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -64,8 +79,8 @@ public class LabelCameraActivity extends AppCompatActivity {
         box = new Box(this);
         root.addView(box, new FrameLayout.LayoutParams(-1, -1));
 
-        TextView hint = new TextView(this);
-        hint.setText("Line up the DIN/NPN number inside the box");
+        hint = new TextView(this);
+        hint.setText("Line up the DIN/NPN number inside the box. It reads by itself.");
         hint.setTextColor(Color.WHITE);
         hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         hint.setGravity(Gravity.CENTER);
@@ -117,35 +132,79 @@ public class LabelCameraActivity extends AppCompatActivity {
                 Preview p = new Preview.Builder().build();
                 p.setSurfaceProvider(preview.getSurfaceProvider());
                 capture = new ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build();
+                // Frames about as sharp as a photo's box crop, so label print is big enough to read.
+                ImageAnalysis frames = new ImageAnalysis.Builder()
+                    .setResolutionSelector(new ResolutionSelector.Builder()
+                        .setResolutionStrategy(new ResolutionStrategy(new Size(1920, 1440), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                        .build())
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                    .build();
+                frames.setAnalyzer(worker, this::readFrame);
                 camera.unbindAll();
-                camera.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, p, capture);
+                camera.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, p, capture, frames);
             } catch (Exception e) {
                 finishWith(NO_CAMERA);
             }
         }, ContextCompat.getMainExecutor(this));
     }
 
+    private void readFrame(ImageProxy frame) {
+        Bitmap box = done ? null : boxOf(upright(frame));
+        frame.close();
+        if (box == null) return;
+        List<String> blocks = read(box);
+        if (blocks != null && LabelReader.hasNumber(blocks) && !done) {
+            done = true;
+            runOnUiThread(() -> finishWith(blocks));
+        }
+    }
+
     private void takePhoto() {
-        if (capture == null) return;
+        if (capture == null || done) return;
+        done = true;
         shutter.setEnabled(false);
-        capture.takePicture(ContextCompat.getMainExecutor(this), new ImageCapture.OnImageCapturedCallback() {
+        hint.setText("Reading the label…");
+        capture.takePicture(worker, new ImageCapture.OnImageCapturedCallback() {
             @Override
             public void onCaptureSuccess(@NonNull ImageProxy image) {
-                Bitmap photo = upright(image);
+                Bitmap box = boxOf(upright(image));
                 image.close();
-                try (FileOutputStream out = new FileOutputStream((File) getIntent().getSerializableExtra(EXTRA_OUTPUT))) {
-                    boxOf(photo).compress(Bitmap.CompressFormat.JPEG, 95, out);
-                    finishWith(RESULT_OK);
-                } catch (IOException | RuntimeException e) {
-                    finishWith(NO_CAMERA);
-                }
+                List<String> blocks = read(box);
+                runOnUiThread(() -> {
+                    if (blocks == null) finishWith(NO_CAMERA);
+                    else finishWith(blocks);
+                });
             }
 
             @Override
             public void onError(@NonNull ImageCaptureException e) {
-                shutter.setEnabled(true);
+                runOnUiThread(() -> {
+                    done = false;
+                    shutter.setEnabled(true);
+                });
             }
         });
+    }
+
+    // On the worker thread. Null when Tesseract can't start.
+    private List<String> read(Bitmap box) {
+        try {
+            if (reader == null) reader = new LabelReader(this);
+            return reader.read(box);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        done = true;
+        worker.execute(() -> {
+            if (reader != null) reader.close();
+        });
+        worker.shutdown();
     }
 
     private static Bitmap upright(ImageProxy image) {
@@ -173,6 +232,11 @@ public class LabelCameraActivity extends AppCompatActivity {
         );
         if (!r.intersect(0, 0, photo.getWidth(), photo.getHeight())) return photo;
         return Bitmap.createBitmap(photo, r.left, r.top, r.width(), r.height());
+    }
+
+    private void finishWith(List<String> blocks) {
+        setResult(RESULT_OK, new Intent().putStringArrayListExtra(EXTRA_BLOCKS, new ArrayList<>(blocks)));
+        finish();
     }
 
     private void finishWith(int result) {
