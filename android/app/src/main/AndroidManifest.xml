@@ -24,6 +24,13 @@
 
         </activity>
 
+        <!-- Label scan camera (MT-122): a box to put the DIN/NPN in. -->
+        <activity
+            android:name=".LabelCameraActivity"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -47,6 +54,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Label scan (MT-122): the in-app camera. Asked for on the first scan; the photo never leaves the phone. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <!-- Android 13+: granted at install for reminder apps, so doses ring at the exact minute. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />

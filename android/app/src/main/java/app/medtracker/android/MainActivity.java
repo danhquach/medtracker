@@ -16,13 +16,16 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(TapHapticsPlugin.class);
-        registerPlugin(LabelScannerPlugin.class);
+        registerPlugin(LabelReaderPlugin.class);
         super.onCreate(savedInstanceState);
         ControlPress press = new ControlPress();
         bridge.getWebView().addJavascriptInterface(press, "MedTrackerPress");
         bridge.getWebView().setOnLongClickListener((v) -> press.onControl);
         if (bridge.getErrorUrl() != null) bridge.setWebViewClient(new OfflineAwareClient(bridge));
         getOnBackPressedDispatcher().addCallback(this, new WebBack());
+        // An install updated from the ML Kit scanner (MT-105) keeps Google's queue of usage events it
+        // never sent; this build can't send them either (MT-122), so delete them.
+        deleteDatabase("com.google.android.datatransport.events");
     }
 
     /**
