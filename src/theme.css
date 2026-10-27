@@ -573,6 +573,15 @@ input[role='switch']:disabled {
   font-size: 1.15rem;
 }
 
+/* Strength on its own line under the name; inline-block keeps the link underline on the name only. */
+.dose-strength {
+  display: inline-block;
+  width: 100%;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 /* Skip first, Taken last with Snooze between them (MT-37); Taken is the widest. */
 .dose-actions {
   display: flex;
