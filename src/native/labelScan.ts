@@ -1,23 +1,19 @@
-// Android app DIN/NPN label scan (MT-105): one photo, read on the phone by the native LabelScanner
-// plugin, then deleted. The web/PWA build has no plugin, so it types the number only.
+// Android app DIN/NPN label scan (MT-105, MT-122): one photo, read on the phone by the native
+// LabelReader plugin (Tesseract), then deleted. The web/PWA build has no plugin, so it types the number only.
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { findCandidates } from '../features/dinLookup/candidates'
 
 type Block = { text: string; lines: string[] }
-const LabelScanner = registerPlugin<{ scan(): Promise<{ blocks: Block[] }> }>('LabelScanner')
-
-// Off: ML Kit queues usage logs for firebaselogging.googleapis.com and can't run without that code
-// (MT-107 privacy gate), so the Scan button stays hidden until scanning sends nothing to Google.
-const SCAN_ENABLED = false
+const LabelReader = registerPlugin<{ scan(): Promise<{ blocks: Block[] }> }>('LabelReader')
 
 // The plugin check, not just "native": the live-site app runs new web code on whatever APK is installed.
-export const canScanLabel = (): boolean =>
-  SCAN_ENABLED && Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LabelScanner')
+// Only LabelReader counts: an older APK's ML Kit "LabelScanner" uploads usage logs to Google (MT-122).
+export const canScanLabel = (): boolean => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LabelReader')
 
 /** The 8-digit numbers on the label, best first; 'cancelled' when the camera was closed without a photo. */
 export async function scanLabel(): Promise<string[] | 'cancelled' | 'no-camera'> {
   try {
-    return findCandidates((await LabelScanner.scan()).blocks)
+    return findCandidates((await LabelReader.scan()).blocks)
   } catch (e) {
     const code = (e as { code?: string }).code
     if (code === 'CANCELLED') return 'cancelled'

@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   native: true,
-  plugin: true,
+  plugins: ['LabelReader'],
   scan: vi.fn(),
 }))
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => h.native, isPluginAvailable: (name: string) => h.plugin && name === 'LabelScanner' },
+  Capacitor: { isNativePlatform: () => h.native, isPluginAvailable: (name: string) => h.plugins.includes(name) },
   registerPlugin: () => ({ scan: h.scan }),
 }))
 
@@ -18,12 +18,18 @@ const rejectWith = (code: string) => h.scan.mockRejectedValueOnce(Object.assign(
 beforeEach(() => {
   h.scan.mockReset()
   h.native = true
-  h.plugin = true
+  h.plugins = ['LabelReader']
 })
 
 describe('canScanLabel', () => {
-  it('is off, even on an app install that has the scanner, until scanning sends nothing to Google', () => {
+  it('is on in an app install with the Tesseract reader', () => {
+    expect(canScanLabel()).toBe(true)
+  })
+
+  it('is off on the web, and on an older install that only has the ML Kit scanner (it uploads logs to Google)', () => {
+    h.plugins = ['LabelScanner']
     expect(canScanLabel()).toBe(false)
+    h.plugins = ['LabelReader']
     h.native = false
     expect(canScanLabel()).toBe(false)
   })
