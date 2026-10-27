@@ -168,11 +168,12 @@ export async function runReminders(d: Deps): Promise<RunResult> {
         const state = refillState(m, m.schedules)
         if (state === 'low' && m.refill_alerted_at === null && m.notify) {
           const left = daysLeft(m.stock, m.units_per_dose, m.schedules.reduce((s, x) => s + avgDosesPerDay(x), 0))
+          const n = Math.round(left ?? 0)
           const results = await pushToUser(m.user_id, {
             type: 'refill',
             tag: `refill-${m.id}`,
             title: `${m.name} is running low`,
-            body: `About ${Math.round(left ?? 0)} days left. Time to refill.`,
+            body: `About ${n} ${n === 1 ? 'day' : 'days'} left. Time to refill.`,
           })
           if (results.includes('ok')) {
             r.refills++

@@ -131,6 +131,11 @@ describe('runReminders', () => {
       expect(bad.log.marks).toEqual([])
     }
   })
+  it('refill body says "day" for one day left', async () => {
+    const { deps, log } = mk({ meds: [lowMed({ stock: 1 })], results: ['ok'] })
+    await runReminders(deps)
+    expect(log.payloads[0]).toMatchObject({ body: 'About 1 day left. Time to refill.' })
+  })
   it('refill re-armed when ok again; skipped for notify=false; mark error is counted', async () => {
     const a = mk({ meds: [lowMed({ stock: 30, refill_alerted_at: 'x' })] })
     await runReminders(a.deps)
