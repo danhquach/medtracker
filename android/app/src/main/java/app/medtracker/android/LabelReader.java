@@ -39,18 +39,19 @@ class LabelReader {
     }
 
     /**
-     * The photo's text blocks, read upright and then turned half way round, since a DIN/NPN is printed
-     * upside down against the rest on some bottles. Slow: call it off the main thread.
+     * The photo's text blocks, read at each quarter turn: Tesseract only reads text the right way up, and
+     * a DIN/NPN can be sideways (a bottle lying down) or upside down against the rest of the label. Slow:
+     * call it off the main thread.
      */
     List<Block> read(Bitmap photo) throws IOException {
         TessBaseAPI tess = new TessBaseAPI();
         try {
             if (!tess.init(dataDir().getPath(), "eng")) throw new IOException("Tesseract didn't start");
             List<Block> blocks = new ArrayList<>();
-            tess.setImage(photo);
-            blocks.addAll(blocksOf(tess.getUTF8Text()));
-            tess.setImage(turned(photo, 180));
-            blocks.addAll(blocksOf(tess.getUTF8Text()));
+            for (int degrees = 0; degrees < 360; degrees += 90) {
+                tess.setImage(turned(photo, degrees));
+                blocks.addAll(blocksOf(tess.getUTF8Text()));
+            }
             return blocks;
         } finally {
             tess.recycle();

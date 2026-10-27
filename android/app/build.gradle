@@ -48,6 +48,10 @@ dependencies {
     // Label scan (MT-122): Tesseract reads the photo on the phone. Not ML Kit, which uploads usage logs to Google.
     // Its English model ships in assets/tessdata, so nothing downloads.
     implementation "cz.adaptech.tesseract4android:tesseract4android-openmp:4.9.0"
+    // The scan's own viewfinder with a box to aim at (MT-122). On-device only; no Play services.
+    implementation "androidx.camera:camera-camera2:1.4.2"
+    implementation "androidx.camera:camera-lifecycle:1.4.2"
+    implementation "androidx.camera:camera-view:1.4.2"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

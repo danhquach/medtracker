@@ -1,15 +1,10 @@
 package app.medtracker.android;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.media.ExifInterface;
-import android.net.Uri;
-import android.provider.MediaStore;
 import androidx.activity.result.ActivityResult;
-import androidx.core.content.FileProvider;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -23,8 +18,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * DIN/NPN label scan (MT-105, MT-122): the phone's camera app takes one photo into the app cache (never
- * the gallery), LabelReader reads it on the phone, and the photo is deleted. Returns the text blocks;
+ * DIN/NPN label scan (MT-105, MT-122): LabelCameraActivity takes one photo of the box on its screen into
+ * the app cache (never the gallery), LabelReader reads it on the phone, and the photo is deleted. Returns the text blocks;
  * picking the number out of them is the page's job. A new name, not MT-105's ML Kit "LabelScanner", so
  * the page only offers Scan on an APK that sends nothing to Google.
  */
@@ -41,15 +36,8 @@ public class LabelReaderPlugin extends Plugin {
     public void scan(PluginCall call) {
         File photo = photo();
         photo.delete();
-        Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", photo);
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            .putExtra(MediaStore.EXTRA_OUTPUT, uri)
-            .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try {
-            startActivityForResult(call, intent, "photoTaken");
-        } catch (ActivityNotFoundException e) {
-            call.reject("No camera app", "NO_CAMERA");
-        }
+        Intent intent = new Intent(getContext(), LabelCameraActivity.class).putExtra(LabelCameraActivity.EXTRA_OUTPUT, photo);
+        startActivityForResult(call, intent, "photoTaken");
     }
 
     @ActivityCallback
@@ -57,6 +45,11 @@ public class LabelReaderPlugin extends Plugin {
         File photo = photo();
         if (call == null) {
             photo.delete();
+            return;
+        }
+        if (result.getResultCode() == LabelCameraActivity.NO_CAMERA) {
+            photo.delete();
+            call.reject("No camera", "NO_CAMERA");
             return;
         }
         if (result.getResultCode() != Activity.RESULT_OK || photo.length() == 0) {
@@ -93,8 +86,7 @@ public class LabelReaderPlugin extends Plugin {
         return b;
     }
 
-    // Scaled down to at most 2400 px a side, which keeps label digits sharp and Tesseract quick, and
-    // turned upright as the camera recorded it: Tesseract only reads text the right way up.
+    // Scaled down to at most 2400 px a side, which keeps label digits sharp and Tesseract quick.
     private static Bitmap decode(File photo) {
         BitmapFactory.Options size = new BitmapFactory.Options();
         size.inJustDecodeBounds = true;
@@ -102,21 +94,6 @@ public class LabelReaderPlugin extends Plugin {
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = 1;
         while (Math.max(size.outWidth, size.outHeight) / opts.inSampleSize > 2400) opts.inSampleSize *= 2;
-        Bitmap bitmap = BitmapFactory.decodeFile(photo.getPath(), opts);
-        if (bitmap == null) return null;
-        return LabelReader.turned(bitmap, uprightDegrees(photo));
-    }
-
-    private static int uprightDegrees(File photo) {
-        try {
-            switch (new ExifInterface(photo.getPath()).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                case ExifInterface.ORIENTATION_ROTATE_90: return 90;
-                case ExifInterface.ORIENTATION_ROTATE_180: return 180;
-                case ExifInterface.ORIENTATION_ROTATE_270: return 270;
-                default: return 0;
-            }
-        } catch (IOException e) {
-            return 0;
-        }
+        return BitmapFactory.decodeFile(photo.getPath(), opts);
     }
 }
