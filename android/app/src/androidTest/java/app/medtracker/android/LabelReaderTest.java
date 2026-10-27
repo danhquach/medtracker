@@ -59,5 +59,7 @@ public class LabelReaderTest {
         assertEquals(Collections.singleton("02242963"), LabelReader.numbers(Arrays.asList("Otrivin", "DIN 0224 2963")));
         assertEquals(Collections.singleton("80058511"), LabelReader.numbers(Arrays.asList("NPN 80058511")));
         assertTrue(LabelReader.numbers(Arrays.asList("LOT 1234567", "EXP 2027-05", "123456789")).isEmpty());
+        // Misreads of NPN 80058511: no DIN or NPN starts with 6 or 4.
+        assertTrue(LabelReader.numbers(Arrays.asList("NPN 60058511", "41989008")).isEmpty());
     }
 }

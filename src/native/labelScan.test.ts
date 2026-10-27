@@ -39,11 +39,22 @@ describe('scanLabel', () => {
   it('returns the label numbers, the one next to DIN first', async () => {
     h.scan.mockResolvedValueOnce({
       blocks: [
-        { text: 'LOT 12345678', lines: ['LOT 12345678'] },
+        { text: 'LOT 80012345', lines: ['LOT 80012345'] },
         { text: 'DIN 0224 2963\n200 mg', lines: ['DIN 0224 2963', '200 mg'] },
       ],
     })
-    expect(await scanLabel()).toEqual(['02242963', '12345678'])
+    expect(await scanLabel()).toEqual(['02242963', '80012345'])
+  })
+
+  it('drops numbers no DIN or NPN starts with, which are misreads', async () => {
+    h.scan.mockResolvedValueOnce({
+      blocks: [
+        { text: 'NPN 60058511', lines: ['NPN 60058511'] },
+        { text: 'LLS8S008 41989008', lines: ['LLS8S008 41989008'] },
+        { text: 'NPN 80058511', lines: ['NPN 80058511'] },
+      ],
+    })
+    expect(await scanLabel()).toEqual(['80058511'])
   })
 
   it('maps a closed camera, a missing camera app and an unreadable photo', async () => {

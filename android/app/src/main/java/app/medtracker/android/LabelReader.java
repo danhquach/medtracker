@@ -26,6 +26,7 @@ class LabelReader implements AutoCloseable {
     private static final String MODEL = "eng.traineddata";
 
     // 8 digits, or two groups of 4 split by a space or dash: what the page's findCandidates looks for.
+    // Only those starting with 0 or 8 count, as every DIN and NPN does (see labelScan.ts).
     private static final Pattern NUMBER = Pattern.compile("(?<!\\d)(\\d{8}|\\d{4}[ -]\\d{4})(?!\\d)");
 
     private final TessBaseAPI tess = new TessBaseAPI();
@@ -54,12 +55,15 @@ class LabelReader implements AutoCloseable {
         return blocks;
     }
 
-    /** The 8-digit numbers in the text, digits only. */
+    /** The 8-digit numbers in the text that could be a DIN/NPN, digits only. */
     static Set<String> numbers(List<String> blocks) {
         Set<String> found = new LinkedHashSet<>();
         for (String block : blocks) {
             Matcher m = NUMBER.matcher(block);
-            while (m.find()) found.add(m.group().replaceAll("\\D", ""));
+            while (m.find()) {
+                String digits = m.group().replaceAll("\\D", "");
+                if (digits.startsWith("0") || digits.startsWith("8")) found.add(digits);
+            }
         }
         return found;
     }

@@ -10,10 +10,14 @@ const LabelReader = registerPlugin<{ scan(): Promise<{ blocks: Block[] }> }>('La
 // Only LabelReader counts: an older APK's ML Kit "LabelScanner" uploads usage logs to Google (MT-122).
 export const canScanLabel = (): boolean => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LabelReader')
 
+// Every DIN starts with 0 and every NPN with 0 or 8 (the Health Canada lists, 2026-10), so any other
+// 8 digits are a misread, like 60058511 for NPN 80058511.
+const couldBeDinOrNpn = (n: string) => /^[08]/.test(n)
+
 /** The 8-digit numbers on the label, best first; 'cancelled' when the camera was closed without a photo. */
 export async function scanLabel(): Promise<string[] | 'cancelled' | 'no-camera'> {
   try {
-    return findCandidates((await LabelReader.scan()).blocks)
+    return findCandidates((await LabelReader.scan()).blocks).filter(couldBeDinOrNpn)
   } catch (e) {
     const code = (e as { code?: string }).code
     if (code === 'CANCELLED') return 'cancelled'
