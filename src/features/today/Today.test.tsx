@@ -127,6 +127,18 @@ describe('Today', () => {
     expect(where()).toBe('/history/m1')
   })
 
+  it('shows the strength apart from the bold name, on due and done rows (MT-128)', async () => {
+    renderToday()
+    const links = [
+      ...(await screen.findAllByRole('link', { name: 'Aspirin 81 mg' })),
+      screen.getByRole('link', { name: /Aspirin 81 mg.*Taken/ }),
+    ]
+    for (const link of links) {
+      expect(link.querySelector('strong')?.textContent).toBe('Aspirin')
+      expect(link.querySelector('.dose-strength')?.textContent?.trim()).toBe('81 mg')
+    }
+  })
+
   it('Taken is the primary action and applies before the server answers', async () => {
     let finish!: () => void
     api.setDoseStatus.mockImplementation(() => new Promise((r) => (finish = () => r({ id: 'd1' }))))
