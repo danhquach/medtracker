@@ -775,6 +775,10 @@ fieldset {
 }
 .history-grid th[scope='row'] {
   text-align: left;
+  /* Long unbroken names (e.g. "Glucosamine/Chondroitin") wrap so the day columns stay on screen;
+     the name column asks for half the width, so words only break when they can't fit. */
+  overflow-wrap: anywhere;
+  width: 50%;
 }
 .history-grid th[scope='row'] a {
   display: inline-block;
