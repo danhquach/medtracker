@@ -9,12 +9,20 @@ import { Card } from '../../components/layout'
 const medLabel = (med: Medication | undefined) =>
   med ? `${med.name}${med.strength ? ` ${med.strength}` : ''}` : 'Unknown medication'
 
+/** Bold name, strength muted on its own line so a long ingredient list can't read as part of the name (MT-128). */
+const MedName = ({ med }: { med: Medication | undefined }) => (
+  <>
+    <strong>{med?.name ?? 'Unknown medication'}</strong>
+    {med?.strength && <> <span className="dose-strength">{med.strength}</span></>}
+  </>
+)
+
 /** A dose on a day not generated yet: shown so the day isn't empty, nothing to mark. */
 export function UpcomingRow({ med }: { med: Medication }) {
   return (
     <Card className="dose-row is-done">
       <Link className="dose-name" to={`/history/${med.id}`}>
-        <strong>{medLabel(med)}</strong>
+        <MedName med={med} />
         <span className="status status-pending">Upcoming</span>
       </Link>
     </Card>
@@ -45,7 +53,7 @@ export default function DoseRow({
     return (
       <Card className="dose-row is-done">
         <Link className="dose-name" to={`/history/${dose.medication_id}`}>
-          <strong>{label}</strong>
+          <MedName med={med} />
           <span className={`status status-${dose.status}`}>
             {dose.status === 'taken' && <span aria-hidden="true">✓ </span>}
             {word}
@@ -66,7 +74,7 @@ export default function DoseRow({
     <Card className="dose-row is-due">
       <div className="dose-info">
         <Link className="dose-name" to={`/history/${dose.medication_id}`}>
-          <strong>{label}</strong>
+          <MedName med={med} />
         </Link>
         {dose.status === 'missed' && <span className="status status-missed">Missed</span>}
         {dose.status === 'pending' && snoozedUntil && (
