@@ -44,8 +44,9 @@ public class LabelCameraActivity extends AppCompatActivity {
     static final String EXTRA_OUTPUT = "output";
     static final int NO_CAMERA = RESULT_FIRST_USER;
 
-    // The box: most of the screen width, square, so a label read across or along the bottle fits.
+    // The box: a strip for one line such as "DIN 0224 2963", most of the screen wide and a quarter as tall.
     private static final float BOX_WIDTH = 0.8f;
+    private static final float BOX_HEIGHT = BOX_WIDTH / 4;
 
     private PreviewView preview;
     private Box box;
@@ -64,7 +65,7 @@ public class LabelCameraActivity extends AppCompatActivity {
         root.addView(box, new FrameLayout.LayoutParams(-1, -1));
 
         TextView hint = new TextView(this);
-        hint.setText("Fit the DIN/NPN inside the box");
+        hint.setText("Line up the DIN/NPN number inside the box");
         hint.setTextColor(Color.WHITE);
         hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         hint.setGravity(Gravity.CENTER);
@@ -157,13 +158,13 @@ public class LabelCameraActivity extends AppCompatActivity {
     }
 
     // The box on screen, mapped onto the photo the preview shows (filled to the screen, centred), with a
-    // margin of a quarter of the box on each side so a label held a little off still reads whole.
+    // margin of half the box's height on each side so a number held a little off still reads whole.
     private Bitmap boxOf(Bitmap photo) {
         RectF onScreen = box.rect();
         float scale = Math.max((float) preview.getWidth() / photo.getWidth(), (float) preview.getHeight() / photo.getHeight());
         float dx = (preview.getWidth() - photo.getWidth() * scale) / 2;
         float dy = (preview.getHeight() - photo.getHeight() * scale) / 2;
-        float pad = onScreen.width() / 4;
+        float pad = onScreen.height() / 2;
         Rect r = new Rect(
             (int) ((onScreen.left - pad - dx) / scale),
             (int) ((onScreen.top - pad - dy) / scale),
@@ -198,16 +199,17 @@ public class LabelCameraActivity extends AppCompatActivity {
         }
 
         RectF rect() {
-            float side = getWidth() * BOX_WIDTH;
-            float left = (getWidth() - side) / 2;
-            float top = (getHeight() - side) / 2;
-            return new RectF(left, top, left + side, top + side);
+            float width = getWidth() * BOX_WIDTH;
+            float height = getWidth() * BOX_HEIGHT;
+            float left = (getWidth() - width) / 2;
+            float top = (getHeight() - height) / 2;
+            return new RectF(left, top, left + width, top + height);
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             RectF r = rect();
-            float corner = r.width() / 20;
+            float corner = r.height() / 8;
             Path outside = new Path();
             outside.setFillType(Path.FillType.EVEN_ODD);
             outside.addRect(0, 0, getWidth(), getHeight(), Path.Direction.CW);
