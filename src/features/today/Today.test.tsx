@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Today from './Today'
@@ -189,6 +189,23 @@ describe('Today', () => {
     expect(screen.getByRole('link', { name: 'Update Aspirin stock' }).getAttribute('href')).toBe('/meds/m1/edit')
     const firstDose = screen.getByRole('heading', { name: '9:00 AM' })
     expect(firstDose.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('says "day" for one day of stock left and "days" otherwise (MT-135)', async () => {
+    api.meds = [{ ...med, stock: 1.5 }]
+    renderToday()
+    const card = await screen.findByRole('region', { name: 'Needs attention' })
+    await waitFor(() => expect(card.textContent).toContain('Aspirin: running low (about 1 day left)'))
+    cleanup()
+    api.meds = [{ ...med, stock: 0 }]
+    renderToday()
+    const empty = await screen.findByRole('region', { name: 'Needs attention' })
+    await waitFor(() => expect(empty.textContent).toContain('Aspirin: running low (about 0 days left)'))
+    cleanup()
+    api.meds = [med]
+    renderToday()
+    const three = await screen.findByRole('region', { name: 'Needs attention' })
+    await waitFor(() => expect(three.textContent).toContain('Aspirin: running low (about 3 days left)'))
   })
 
   it('picking another day puts it in the URL; picking today clears it', async () => {

@@ -11,6 +11,8 @@ export interface LowMed {
   daysLeft: number | null
 }
 
+const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
+
 /** Everything on Today that wants the user's attention, in one card below the doses. Each item links to its fix. */
 export default function NeedsAttention({
   guest,
@@ -67,7 +69,7 @@ export default function NeedsAttention({
         {low.map((m) => (
           <li key={m.id}>
             <p className="low">
-              {m.name}: running low{m.daysLeft !== null ? ` (about ${Math.max(0, Math.floor(m.daysLeft))} days left)` : ''}
+              {m.name}: running low{m.daysLeft !== null ? ` (about ${days(Math.max(0, Math.floor(m.daysLeft)))} left)` : ''}
             </p>
             <Link to={`/meds/${m.id}/edit`} aria-label={`Update ${m.name} stock`}>
               Update stock
