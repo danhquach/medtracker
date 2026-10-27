@@ -601,10 +601,11 @@ input[role='switch']:disabled {
   gap: 12px;
 }
 
-/* Compact, equal-sized controls left-aligned under the name, so the name leads the card. */
+/* Compact, equal-sized controls left-aligned under the name, so the name leads the card.
+   Still 44px tall: these are the most-tapped targets in the app (MT-134). */
 .dose-row.is-due .dose-actions button {
   min-width: 80px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 14px;
   font-size: 0.95rem;
 }
