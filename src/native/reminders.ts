@@ -158,7 +158,7 @@ async function runSync(): Promise<void> {
         autoCancel: true,
         // One per dose: when a repeat fires, the patched plugin clears the shown one in its group.
         group: `dose-${reminderId(r.medId, r.scheduledFor)}`,
-        extra: { medId: r.medId, scheduledFor: r.scheduledFor },
+        extra: { medId: r.medId, scheduledFor: r.scheduledFor, snoozeMinutes: input.repeatMinutes },
         schedule: { at: new Date(r.at), allowWhileIdle: true },
       })),
     })
@@ -201,12 +201,25 @@ async function sendSavedActions(): Promise<void> {
   write(ACTIONS_KEY, left.length ? left : null)
 }
 
+type Tap = ActionPerformed & { actedAt?: number }
+
 /** A tap is kept on the phone first (in the queue, so no sync overwrites it), then sent by the sync. */
-function onAction({ actionId, notification }: ActionPerformed): Promise<void> {
+function onAction(a: Tap): Promise<void> {
+  return afterKept(keepAction(a))
+}
+
+const afterKept = (kept: Promise<void>): Promise<void> =>
+  kept
+    .then(syncReminders)
+    .catch((e: unknown) => console.error('reminder action failed', e))
+    .finally(() => window.dispatchEvent(new Event(REMINDER_ACTED)))
+
+/** Saves a tap for the sync. `actedAt` is when the phone took a tap the app wasn't running for (MT-145). */
+function keepAction({ actionId, notification, actedAt }: Tap): Promise<void> {
   const { medId, scheduledFor } = (notification.extra ?? {}) as { medId?: string; scheduledFor?: string }
   if (!medId || !scheduledFor || (actionId !== 'taken' && actionId !== 'snooze')) return Promise.resolve()
   return enqueue(async () => {
-    const now = Date.now()
+    const now = actedAt ?? Date.now()
     const snoozes = liveSnoozes(now)
     const id = reminderId(medId, scheduledFor) // the dose's, also when tapped on one of its repeats
     let minutes: (typeof SNOOZE_MINUTES)[number] = 10
@@ -215,11 +228,42 @@ function onAction({ actionId, notification }: ActionPerformed): Promise<void> {
       snoozes[id] = now + minutes * 60_000 // rings again even if the server can't be told
     } else delete snoozes[id]
     write(SNOOZES_KEY, snoozes)
-    write(ACTIONS_KEY, [...read<SavedAction[]>(ACTIONS_KEY, []), { action: actionId, medId, scheduledFor, minutes, at: now }])
+    const saved = read<SavedAction[]>(ACTIONS_KEY, [])
+    // Already saved: the phone gave it again because forgetting it failed.
+    if (actedAt !== undefined && saved.some((s) => s.at === actedAt && s.medId === medId && s.action === actionId)) return
+    write(ACTIONS_KEY, [...saved, { action: actionId, medId, scheduledFor, minutes, at: now }])
   })
-    .then(syncReminders)
-    .catch((e: unknown) => console.error('reminder action failed', e))
-    .finally(() => window.dispatchEvent(new Event(REMINDER_ACTED)))
+}
+
+// Added by the patched plugin (MT-145): Taken/Snooze run without opening the app and the phone
+// keeps each tap until the app has saved it. An APK from before that has neither.
+type ActionKeeper = {
+  reminderActions(): Promise<{ actions: (Tap & { actedAt: number })[] }>
+  forgetReminderActions(o: { upTo: number }): Promise<void>
+}
+
+let taking: Promise<void> = Promise.resolve()
+
+/** Handles the taps the phone kept while the app was closed or in the background, one take at a time. */
+function takeKeptActions(): Promise<void> {
+  taking = taking.then(takeOnce, takeOnce)
+  return taking
+}
+
+async function takeOnce(): Promise<void> {
+  const ln = (await plugin()).LocalNotifications as unknown as ActionKeeper
+  let actions
+  try {
+    ;({ actions } = await ln.reminderActions())
+  } catch {
+    return // an older APK: its buttons open the app and come through the listener
+  }
+  if (!actions.length) return
+  const kept = actions.map(keepAction)
+  for (const k of kept) void afterKept(k)
+  await Promise.all(kept)
+  // Only once saved here: a tap the app dies before saving is still on the phone next start.
+  await ln.forgetReminderActions({ upTo: Math.max(...actions.map((a) => a.actedAt)) }).catch(() => {})
 }
 
 let resyncTimer: ReturnType<typeof setTimeout> | undefined
@@ -246,10 +290,16 @@ export async function startReminders(): Promise<void> {
     types: [{ id: ACTION_TYPE, actions: [{ id: 'taken', title: 'Taken' }, { id: 'snooze', title: 'Snooze' }] }],
   })
   await ln.addListener('localNotificationActionPerformed', (a) => void onAction(a))
+  await ln.addListener('reminderActionsWaiting' as 'localNotificationActionPerformed', () => void takeKeptActions())
+  await takeKeptActions()
   // Off but alarms still set: after switching to the live-site APK, the old build's alarms stay
   // armed while this origin starts with reminders off. Clear them so turning on doesn't double up.
   if (!remindersEnabled()) await enqueue(cancelAll)
-  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && resyncSoon())
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    void takeKeptActions() // in case the phone's nudge came while the page was asleep
+    resyncSoon()
+  })
   subscribe(resyncSoon) // local edits (meds, doses, snoozes) and reconnects
   resyncSoon()
 }

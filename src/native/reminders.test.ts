@@ -3,7 +3,8 @@ import type { DoseEvent, Medication, Profile, Schedule } from '../lib/types'
 
 const h = vi.hoisted(() => {
   const pending: { id: number }[] = []
-  let actionListener: ((a: unknown) => void) | undefined
+  const listeners: Record<string, (a: unknown) => void> = {}
+  const taps: unknown[] = []
   const ln = {
     checkPermissions: vi.fn(async () => ({ display: 'granted' })),
     requestPermissions: vi.fn(async () => ({ display: 'granted' })),
@@ -20,12 +21,16 @@ const h = vi.hoisted(() => {
     removeAllDeliveredNotifications: vi.fn(async () => {}),
     createChannel: vi.fn(async () => {}),
     registerActionTypes: vi.fn(async () => {}),
-    addListener: vi.fn(async (_: string, fn: (a: unknown) => void) => {
-      actionListener = fn
+    addListener: vi.fn(async (event: string, fn: (a: unknown) => void) => {
+      listeners[event] = fn
       return { remove: async () => {} }
     }),
+    reminderActions: vi.fn(async () => ({ actions: [...taps] })),
+    forgetReminderActions: vi.fn(async ({ upTo }: { upTo: number }) => {
+      taps.splice(0, taps.length, ...taps.filter((t) => (t as { actedAt: number }).actedAt > upTo))
+    }),
   }
-  return { ln, pending, act: (a: unknown) => actionListener?.(a) }
+  return { ln, pending, taps, listeners, act: (a: unknown) => listeners.localNotificationActionPerformed?.(a) }
 })
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, isPluginAvailable: () => true } }))
@@ -70,6 +75,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
   localStorage.clear()
   h.pending.length = 0
+  h.taps.length = 0
   localStorage.setItem('medtracker-reminders-on', 'true')
   vi.mocked(meds.listMeds).mockResolvedValue([med])
   vi.mocked(meds.listSchedules).mockResolvedValue([sched])
@@ -82,7 +88,8 @@ describe('syncReminders', () => {
     await r.syncReminders()
     expect(h.ln.schedule).toHaveBeenCalledTimes(1)
     const [n] = h.ln.schedule.mock.calls[0][0].notifications as Record<string, unknown>[]
-    expect(n).toMatchObject({ channelId: 'dose-reminders', actionTypeId: 'dose', extra: { medId: 'm1', scheduledFor: DUE } })
+    // The snooze length rides along for a Snooze tapped while the app is closed (MT-145).
+    expect(n).toMatchObject({ channelId: 'dose-reminders', actionTypeId: 'dose', extra: { medId: 'm1', scheduledFor: DUE, snoozeMinutes: 5 } })
     expect(h.pending).toHaveLength(7 * 6) // each dose plus its 5 repeats
   })
 
@@ -225,6 +232,74 @@ describe('notification buttons', () => {
     await tap('snooze', 2)
     expect(doses.snoozeDose).toHaveBeenCalledWith('d1', 5)
     expect(JSON.parse(localStorage.getItem('medtracker-reminder-snoozes')!)).toEqual({ [reminderId('m1', DUE)]: Date.parse(DUE) + 16 * 60_000 })
+  })
+})
+
+describe('notification buttons with the app closed (MT-145)', () => {
+  const kept = (actionId: string, actedAt: number) => ({
+    actionId,
+    actedAt,
+    notification: { id: reminderId('m1', DUE), title: '', body: '', extra: { medId: 'm1', scheduledFor: DUE } },
+  })
+  const settle = async () => {
+    await until(() => localStorage.getItem('medtracker-reminder-actions') !== null || vi.mocked(doses.setDoseStatus).mock.calls.length > 0)
+    await r.syncReminders()
+  }
+
+  it('a Taken tapped while the app was closed is sent when it starts', async () => {
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    h.taps.push(kept('taken', Date.parse(DUE) + 60_000))
+    await r.startReminders()
+    await settle()
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(h.taps).toEqual([])
+  })
+
+  it('a Snooze tapped while the app was closed counts from the tap, not from when the app opens', async () => {
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    vi.mocked(doses.snoozeDose).mockRejectedValue(new Error('offline'))
+    vi.setSystemTime(Date.parse(DUE) + 3 * 60_000)
+    h.taps.push(kept('snooze', Date.parse(DUE) + 60_000))
+    await r.startReminders()
+    await settle()
+    expect(JSON.parse(localStorage.getItem('medtracker-reminder-snoozes')!)).toEqual({ [reminderId('m1', DUE)]: Date.parse(DUE) + 6 * 60_000 })
+  })
+
+  it('a tap while the app is in the background is taken when the phone says one is waiting', async () => {
+    await r.startReminders()
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    h.taps.push(kept('taken', Date.parse(DUE)))
+    h.listeners.reminderActionsWaiting?.({})
+    await settle()
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+  })
+
+  it('the phone forgets a tap only once the app has saved it', async () => {
+    h.taps.push(kept('taken', Date.parse(DUE)))
+    let saved = false
+    h.ln.forgetReminderActions.mockImplementationOnce(async () => {
+      saved = localStorage.getItem('medtracker-reminder-actions') !== null
+    })
+    await r.startReminders()
+    await until(() => h.ln.forgetReminderActions.mock.calls.length > 0)
+    expect(saved).toBe(true)
+    expect(h.ln.forgetReminderActions).toHaveBeenCalledWith({ upTo: Date.parse(DUE) })
+  })
+
+  it('a tap the phone still has (forgetting failed) is not saved twice', async () => {
+    h.ln.forgetReminderActions.mockRejectedValue(new Error('bridge gone'))
+    h.taps.push(kept('taken', Date.parse(DUE)))
+    await r.startReminders()
+    h.listeners.reminderActionsWaiting?.({})
+    h.listeners.reminderActionsWaiting?.({})
+    await until(() => h.ln.forgetReminderActions.mock.calls.length >= 3)
+    expect(JSON.parse(localStorage.getItem('medtracker-reminder-actions')!)).toHaveLength(1)
+    h.ln.forgetReminderActions.mockReset()
+  })
+
+  it('an installed app without the background buttons still starts', async () => {
+    h.ln.reminderActions.mockRejectedValueOnce(new Error('not implemented'))
+    await expect(r.startReminders()).resolves.toBeUndefined()
   })
 })
 
