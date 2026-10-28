@@ -25,7 +25,10 @@ const h = vi.hoisted(() => {
       listeners[event] = fn
       return { remove: async () => {} }
     }),
-    takeReminderActions: vi.fn(async () => ({ actions: taps.splice(0) })),
+    reminderActions: vi.fn(async () => ({ actions: [...taps] })),
+    forgetReminderActions: vi.fn(async ({ upTo }: { upTo: number }) => {
+      taps.splice(0, taps.length, ...taps.filter((t) => (t as { actedAt: number }).actedAt > upTo))
+    }),
   }
   return { ln, pending, taps, listeners, act: (a: unknown) => listeners.localNotificationActionPerformed?.(a) }
 })
@@ -271,8 +274,31 @@ describe('notification buttons with the app closed (MT-145)', () => {
     expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
   })
 
+  it('the phone forgets a tap only once the app has saved it', async () => {
+    h.taps.push(kept('taken', Date.parse(DUE)))
+    let saved = false
+    h.ln.forgetReminderActions.mockImplementationOnce(async () => {
+      saved = localStorage.getItem('medtracker-reminder-actions') !== null
+    })
+    await r.startReminders()
+    await until(() => h.ln.forgetReminderActions.mock.calls.length > 0)
+    expect(saved).toBe(true)
+    expect(h.ln.forgetReminderActions).toHaveBeenCalledWith({ upTo: Date.parse(DUE) })
+  })
+
+  it('a tap the phone still has (forgetting failed) is not saved twice', async () => {
+    h.ln.forgetReminderActions.mockRejectedValue(new Error('bridge gone'))
+    h.taps.push(kept('taken', Date.parse(DUE)))
+    await r.startReminders()
+    h.listeners.reminderActionsWaiting?.({})
+    h.listeners.reminderActionsWaiting?.({})
+    await until(() => h.ln.forgetReminderActions.mock.calls.length >= 3)
+    expect(JSON.parse(localStorage.getItem('medtracker-reminder-actions')!)).toHaveLength(1)
+    h.ln.forgetReminderActions.mockReset()
+  })
+
   it('an installed app without the background buttons still starts', async () => {
-    h.ln.takeReminderActions.mockRejectedValueOnce(new Error('not implemented'))
+    h.ln.reminderActions.mockRejectedValueOnce(new Error('not implemented'))
     await expect(r.startReminders()).resolves.toBeUndefined()
   })
 })
