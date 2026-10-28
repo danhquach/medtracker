@@ -1,3 +1,195 @@
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml b/node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml
+index 0db6893..0938e18 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml
++++ b/node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml
+@@ -3,6 +3,7 @@
+     <application>
+         <receiver android:name="com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher" />
+         <receiver android:name="com.capacitorjs.plugins.localnotifications.NotificationDismissReceiver" />
++        <receiver android:name="com.capacitorjs.plugins.localnotifications.NotificationActionReceiver" android:exported="false" />
+         <receiver
+             android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver"
+             android:directBootAware="true"
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.kt
+index 72c31a7..29d174e 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.kt
++++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.kt
+@@ -251,8 +251,12 @@ class LocalNotificationManager(
+         if (actionTypeId != null) {
+             val actionGroup = storage.getActionGroup(actionTypeId)
+             for (notificationAction in actionGroup) {
+-                val actionIntent = buildIntent(localNotification, notificationAction.id)
+-                val actionPendingIntent = PendingIntent.getActivity(
++                // MedTracker (MT-145): a button acts in the background instead of opening the app.
++                val actionIntent = Intent(context, NotificationActionReceiver::class.java)
++                actionIntent.putExtra(NOTIFICATION_INTENT_KEY, id)
++                actionIntent.putExtra(ACTION_INTENT_KEY, notificationAction.id)
++                actionIntent.putExtra(NOTIFICATION_OBJ_INTENT_KEY, localNotification.source)
++                val actionPendingIntent = PendingIntent.getBroadcast(
+                     context,
+                     id + (notificationAction.id?.hashCode() ?: 0),
+                     actionIntent,
+@@ -418,7 +422,7 @@ class LocalNotificationManager(
+         }
+     }
+ 
+-    private fun cancelTimerForNotification(notificationId: Int) {
++    internal fun cancelTimerForNotification(notificationId: Int) {
+         val intent = Intent(context, TimedNotificationPublisher::class.java)
+         var flags = PendingIntent.FLAG_NO_CREATE
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationsPlugin.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationsPlugin.kt
+index 779b7b8..df553b3 100644
+--- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationsPlugin.kt
++++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/LocalNotificationsPlugin.kt
+@@ -61,6 +61,12 @@ class LocalNotificationsPlugin : Plugin() {
+         }
+     }
+ 
++    /** MedTracker (MT-145): the Taken/Snooze taps the phone kept for the app, which it now forgets. */
++    @PluginMethod
++    fun takeReminderActions(call: PluginCall) {
++        call.resolve(JSObject().put("actions", NotificationActionReceiver.take(context)))
++    }
++
+     @PluginMethod
+     fun schedule(call: PluginCall) {
+         if (shouldRequestNotificationPermission()) {
+@@ -531,11 +537,20 @@ class LocalNotificationsPlugin : Plugin() {
+         notifyListeners("localNotificationReceived", notification, true)
+     }
+ 
++    internal fun dispatchReminderActionsWaiting() {
++        notifyListeners("reminderActionsWaiting", JSObject(), false)
++    }
++
+     companion object {
+         const val LOCAL_NOTIFICATIONS = "display"
+ 
+         private var staticBridge: Bridge? = null
+ 
++        /** MedTracker (MT-145): tells a running app a tap is waiting for [takeReminderActions]. */
++        fun fireReminderActionsWaiting() {
++            getLocalNotificationsInstance()?.dispatchReminderActionsWaiting()
++        }
++
+         fun fireReceived(notification: JSObject?) {
+             getLocalNotificationsInstance()?.dispatchReceived(notification)
+         }
+diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/NotificationActionReceiver.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/NotificationActionReceiver.kt
+new file mode 100644
+index 0000000..58c8e22
+--- /dev/null
++++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/NotificationActionReceiver.kt
+@@ -0,0 +1,108 @@
++package com.capacitorjs.plugins.localnotifications
++
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import androidx.core.app.NotificationManagerCompat
++import com.getcapacitor.CapConfig
++import com.getcapacitor.JSArray
++import com.getcapacitor.JSObject
++import java.text.SimpleDateFormat
++import java.util.TimeZone
++import org.json.JSONArray
++import org.json.JSONException
++
++/**
++ * MedTracker (MT-145): a notification button (Taken, Snooze) runs here instead of opening the app.
++ * The phone acts on the tap at once, in case the app isn't running: the dose's reminder and its
++ * repeats go, and a snooze rings again after the snooze length (`extra.snoozeMinutes`) with its
++ * repeats after it. The tap is kept until the app takes it ([take]) to tell the server and re-plan.
++ */
++class NotificationActionReceiver : BroadcastReceiver() {
++
++    override fun onReceive(context: Context, intent: Intent) {
++        val id = intent.getIntExtra(LocalNotificationManager.NOTIFICATION_INTENT_KEY, Int.MIN_VALUE)
++        val actionId = intent.getStringExtra(LocalNotificationManager.ACTION_INTENT_KEY)
++        val source = intent.getStringExtra(LocalNotificationManager.NOTIFICATION_OBJ_INTENT_KEY)
++        if (id == Int.MIN_VALUE || actionId == null || source == null) return
++        val tapped = try {
++            JSObject(source)
++        } catch (e: JSONException) {
++            return
++        }
++        val now = System.currentTimeMillis()
++        keep(context, JSObject().put("actionId", actionId).put("notification", tapped).put("actedAt", now))
++
++        val storage = NotificationStorage(context)
++        val manager = LocalNotificationManager(storage, null, context, CapConfig.loadDefault(context))
++        val shade = NotificationManagerCompat.from(context)
++        val group = tapped.getString("group")
++        val sameDose = storage.getSavedNotifications().filter { it.id != id && it.id != null && group != null && it.group == group }
++        // Repeats still to ring, soonest first: after a snooze they ring again, one snooze length apart.
++        val repeats = sameDose.filter { !it.isTriggered() }.sortedBy { it.schedule?.at?.time ?: 0 }
++        shade.cancel(id)
++        if (LocalNotificationManager.isSafeToForget(storage.getSavedNotification(id.toString()))) {
++            storage.deleteNotification(id.toString())
++        }
++        for (n in sameDose) {
++            val nid = n.id ?: continue
++            shade.cancel(nid)
++            manager.cancelTimerForNotification(nid)
++            storage.deleteNotification(nid.toString())
++        }
++        if (actionId == "snooze") snooze(tapped, repeats, now, storage, manager)
++        // Last, so a running app re-plans after the phone's changes, not before them.
++        LocalNotificationsPlugin.fireReminderActionsWaiting()
++    }
++
++    private fun snooze(
++        tapped: JSObject,
++        repeats: List<LocalNotification>,
++        now: Long,
++        storage: NotificationStorage,
++        manager: LocalNotificationManager
++    ) {
++        val minutes = tapped.getJSObject("extra")?.getInteger("snoozeMinutes") ?: 10
++        val step = minutes * 60_000L
++        val format = SimpleDateFormat(LocalNotificationSchedule.JS_DATE_FORMAT)
++        format.timeZone = TimeZone.getTimeZone("UTC")
++        val again = (listOf(tapped) + repeats.mapNotNull { it.source?.let(::JSObject) }).mapIndexed { i, json ->
++            val schedule = json.getJSObject("schedule") ?: JSObject()
++            schedule.put("at", format.format(now + step * (i + 1)))
++            json.put("schedule", schedule)
++            LocalNotification.buildNotificationFromJSObject(json)
++        }
++        storage.appendNotifications(again)
++        manager.schedule(null, again)
++    }
++
++    companion object {
++        private const val STORE = "MedTrackerReminderActions"
++        private const val KEY = "taps"
++
++        @Synchronized
++        private fun keep(context: Context, action: JSObject) {
++            val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
++            val taps = try {
++                JSONArray(prefs.getString(KEY, "[]"))
++            } catch (e: JSONException) {
++                JSONArray()
++            }
++            taps.put(action)
++            prefs.edit().putString(KEY, taps.toString()).commit()
++        }
++
++        /** The taps kept since the app last took them, oldest first; the phone forgets them. */
++        @Synchronized
++        fun take(context: Context): JSArray {
++            val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
++            val taps = try {
++                JSArray(prefs.getString(KEY, "[]"))
++            } catch (e: JSONException) {
++                JSArray()
++            }
++            prefs.edit().remove(KEY).commit()
++            return taps
++        }
++    }
++}
 diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
 index 52def58..11c214d 100644
 --- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
