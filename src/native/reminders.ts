@@ -136,11 +136,16 @@ async function runSync(): Promise<void> {
   const rung = liveRung(now)
   const plan = planReminders({ ...input, nowMs: now, days: DAYS, snoozes, rung })
   // A reminder already showing goes away once its dose is marked or snoozed (it rings again later).
+  // Android lists a shown reminder without its `extra`, so its dose is found by group (MT-147).
+  const byGroup = new Map(input.doses.map((d) => [`dose-${reminderId(d.medication_id, d.scheduled_for)}`, d]))
   const { notifications: shown } = await ln.getDeliveredNotifications()
   const done = shown.filter((n) => {
     const { medId, scheduledFor } = (n.extra ?? {}) as { medId?: string; scheduledFor?: string }
-    if (!medId || !scheduledFor) return false
-    const row = input.doses.find((d) => d.medication_id === medId && sameTime(d.scheduled_for, scheduledFor))
+    if (!(medId && scheduledFor) && !n.group?.startsWith('dose-')) return false
+    const row =
+      medId && scheduledFor
+        ? input.doses.find((d) => d.medication_id === medId && sameTime(d.scheduled_for, scheduledFor))
+        : byGroup.get(n.group!)
     return (row && row.status !== 'pending') || plan.some((r) => r.id === n.id)
   })
   if (done.length) await ln.removeDeliveredNotifications({ notifications: done })
