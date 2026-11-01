@@ -10,6 +10,7 @@ import { useProfileState } from '../auth/useProfile'
 import { addDays, localDayRange, todayIn } from '../today/dayRange'
 import { Button } from '../../components/Button'
 import { Notice } from '../../components/layout'
+import { closeDoseNotification } from '../../push/closeStale'
 import MedHistory from './MedHistory'
 import MonthView from './MonthView'
 import { Legend } from './StatusIcon'
@@ -79,6 +80,7 @@ export default function History() {
       const row = await setDoseStatus(dose.id, status)
       setDoses((ds) => (row ? ds.map((d) => (d.id === row.id ? row : d)) : ds.filter((d) => d.id !== dose.id)))
       if (!row) setSaveError(STALE_DOSE)
+      else if (status !== 'pending') void closeDoseNotification(dose.id)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Could not save that change')
     } finally {

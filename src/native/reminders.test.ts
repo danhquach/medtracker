@@ -116,6 +116,26 @@ describe('syncReminders', () => {
     expect(other.group).not.toBe(tonight[0].group) // another dose keeps its own notification
   })
 
+  // Android lists a shown reminder with its group but not its `extra` (MT-147).
+  const shownRepeat = { id: reminderId('m1', DUE, 2), title: 'Time for A', body: '', group: `dose-${reminderId('m1', DUE)}` }
+
+  it.each(['taken', 'skipped'] as const)('a dose marked %s in the app clears its shown reminder (MT-147)', async (status) => {
+    vi.setSystemTime(Date.parse(DUE) + 12 * 60_000)
+    vi.mocked(doses.listDoses).mockResolvedValue([row({ status })])
+    h.ln.getDeliveredNotifications.mockResolvedValueOnce({ notifications: [shownRepeat] } as never)
+    await r.syncReminders()
+    expect(h.ln.removeDeliveredNotifications).toHaveBeenCalledWith({ notifications: [shownRepeat] })
+  })
+
+  it('keeps a shown reminder while its dose is still due, and leaves non-dose notifications alone', async () => {
+    vi.setSystemTime(Date.parse(DUE) + 12 * 60_000)
+    vi.mocked(doses.listDoses).mockResolvedValue([row()])
+    const test = { id: 1, title: 'Test', body: '' }
+    h.ln.getDeliveredNotifications.mockResolvedValueOnce({ notifications: [shownRepeat, test] } as never)
+    await r.syncReminders()
+    expect(h.ln.removeDeliveredNotifications).not.toHaveBeenCalled()
+  })
+
   it('a dose already past when the phone first plans gets no repeats', async () => {
     vi.setSystemTime(Date.parse(DUE) + 7 * 60_000)
     vi.mocked(doses.listDoses).mockResolvedValue([row()])

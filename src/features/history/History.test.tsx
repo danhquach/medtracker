@@ -17,11 +17,13 @@ const api = vi.hoisted(() => ({
   listDoses: vi.fn(),
   listMeds: vi.fn(),
   setDoseStatus: vi.fn(),
+  closeOne: vi.fn(),
   profile: { profile: { time_zone: 'America/Toronto' } as unknown, error: null as string | null, retry: vi.fn() },
 }))
 vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
 vi.mock('../../data/meds', () => ({ listMeds: api.listMeds }))
 vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus, STALE_DOSE: 'stale dose' }))
+vi.mock('../../push/closeStale', () => ({ closeDoseNotification: api.closeOne }))
 
 const med = (id: string, name: string, paused = false) => ({ id, name, paused })
 const dose = (id: string, medication_id: string, scheduled_for: string, status: string) => ({
@@ -113,6 +115,7 @@ describe('History', () => {
   })
 
   it('changes any past dose to Taken, Skipped or Not taken', async () => {
+    api.closeOne.mockClear()
     api.setDoseStatus.mockImplementation((id: string, status: string) =>
       Promise.resolve({ ...dose(id, 'm1', '2026-10-17T13:00:00Z', status) }),
     )
@@ -123,6 +126,7 @@ describe('History', () => {
     fireEvent.click(btn('Taken'))
     await waitFor(() => expect(btn('Taken').getAttribute('aria-pressed')).toBe('true'))
     expect(api.setDoseStatus).toHaveBeenLastCalledWith('d3', 'taken')
+    expect(api.closeOne).toHaveBeenLastCalledWith('d3') // its reminder goes away (MT-147)
     const item = group.closest('li') as HTMLElement
     expect(within(item).getByRole('img', { name: 'Taken' })).toBeTruthy()
 
@@ -130,6 +134,7 @@ describe('History', () => {
     expect(api.setDoseStatus).toHaveBeenLastCalledWith('d3', 'pending')
     // Past day: back to pending reads as Missed straight away.
     await waitFor(() => expect(within(item).getByRole('img', { name: 'Missed' })).toBeTruthy())
+    expect(api.closeOne).toHaveBeenCalledTimes(1) // due again: nothing to clear
   })
 
   it('shows today\'s Not taken dose as Pending', async () => {
