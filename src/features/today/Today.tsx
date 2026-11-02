@@ -10,7 +10,7 @@ import { isGuest } from '../auth/auth'
 import LoadError from '../auth/LoadError'
 import { useProfileState } from '../auth/useProfile'
 import { useSession } from '../auth/useSession'
-import { REMINDER_ACTED } from '../../native/reminders'
+import { REMINDER_ACTED, withKeptTaps } from '../../native/reminders'
 import { closeDoseNotification, closeStaleNotifications } from '../../push/closeStale'
 import { deviceLabel, enablePushOnThisDevice } from '../../push/subscribe'
 import { useDeviceNotificationState } from '../notifications/useDeviceNotificationState'
@@ -106,7 +106,7 @@ export default function Today() {
         if (id !== requestId.current) return
         setMeds(m)
         setSchedules(s)
-        setDoses(d)
+        setDoses(withKeptTaps(d)) // a notification tap the server hasn't got yet still shows (MT-150)
         setClock(Date.now()) // due / snoozed-until are judged against the time of the last load
         setLoaded(true)
         setError(null)
@@ -179,12 +179,17 @@ export default function Today() {
         // best-effort; stale notifications are harmless
       }
     }
+    // Taken/Snooze on an Android app notification: on screen at once, then confirmed by the reload.
+    function onActed() {
+      setDoses(withKeptTaps)
+      void onVisible()
+    }
     void onVisible() // cold open counts as becoming visible
     document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener(REMINDER_ACTED, onVisible) // Taken/Snooze on an Android app notification
+    window.addEventListener(REMINDER_ACTED, onActed)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener(REMINDER_ACTED, onVisible)
+      window.removeEventListener(REMINDER_ACTED, onActed)
     }
   }, [load, refreshNotifications, rollover])
 

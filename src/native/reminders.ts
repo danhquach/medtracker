@@ -2,6 +2,7 @@
 // they fire on time offline and while idle. The web/PWA build never loads the plugin.
 import { Capacitor } from '@capacitor/core'
 import type { ActionPerformed } from '@capacitor/local-notifications'
+import type { DoseEvent } from '../lib/types'
 import { listDoses, setDoseStatus, snoozeDose, SNOOZE_MINUTES } from '../data/doses'
 import { listMeds, listSchedules } from '../data/meds'
 import { sameTime } from '../data/offline/ops'
@@ -22,7 +23,10 @@ const RUNG_KEY = 'medtracker-reminder-rung'
 // installed, and one without the plugin falls back to the web path instead of crashing.
 export const isNativeApp = (): boolean => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications')
 
-/** Window event after Taken/Snooze on a notification changed a dose, so open screens reload. */
+/**
+ * Window event after Taken/Snooze on a notification: once the tap is kept (show it with
+ * `withKeptTaps`) and again once it was sent, so open screens reload.
+ */
 export const REMINDER_ACTED = 'medtracker:reminder-acted'
 
 // Resolves to the module, never the plugin itself: awaiting a Capacitor plugin proxy calls its
@@ -206,6 +210,19 @@ async function sendSavedActions(): Promise<void> {
   write(ACTIONS_KEY, left.length ? left : null)
 }
 
+/** Doses as they are once the taps kept on this phone but not sent yet land, so screens show them now (MT-150). */
+export function withKeptTaps(doses: DoseEvent[]): DoseEvent[] {
+  const taps = read<SavedAction[]>(ACTIONS_KEY, [])
+  if (!taps.length) return doses
+  return doses.map((d) => {
+    const a = taps.findLast((t) => t.medId === d.medication_id && sameTime(t.scheduledFor, d.scheduled_for))
+    if (!a || d.status !== 'pending') return d
+    return a.action === 'taken'
+      ? { ...d, status: 'taken', acted_at: new Date(a.at).toISOString(), snoozed_until: null }
+      : { ...d, snoozed_until: new Date(a.at + a.minutes * 60_000).toISOString() }
+  })
+}
+
 type Tap = ActionPerformed & { actedAt?: number }
 
 /** A tap is kept on the phone first (in the queue, so no sync overwrites it), then sent by the sync. */
@@ -215,6 +232,7 @@ function onAction(a: Tap): Promise<void> {
 
 const afterKept = (kept: Promise<void>): Promise<void> =>
   kept
+    .then(() => window.dispatchEvent(new Event(REMINDER_ACTED))) // shown now, not after the sync's network calls (MT-150)
     .then(syncReminders)
     .catch((e: unknown) => console.error('reminder action failed', e))
     .finally(() => window.dispatchEvent(new Event(REMINDER_ACTED)))
