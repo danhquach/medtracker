@@ -253,6 +253,39 @@ describe('notification buttons', () => {
     expect(doses.snoozeDose).toHaveBeenCalledWith('d1', 5)
     expect(JSON.parse(localStorage.getItem('medtracker-reminder-snoozes')!)).toEqual({ [reminderId('m1', DUE)]: Date.parse(DUE) + 16 * 60_000 })
   })
+
+  it('a tap shows on open screens at once, before the server is asked (MT-150)', async () => {
+    let answer!: (d: DoseEvent[]) => void
+    vi.mocked(doses.listDoses).mockReturnValue(new Promise((res) => (answer = res)))
+    const told = vi.fn()
+    window.addEventListener(r.REMINDER_ACTED, told)
+    h.act({ actionId: 'taken', notification: { id: reminderId('m1', DUE), title: '', body: '', extra: { medId: 'm1', scheduledFor: DUE } } })
+    await until(() => told.mock.calls.length > 0)
+    expect(told).toHaveBeenCalled()
+    expect(doses.setDoseStatus).not.toHaveBeenCalled()
+    expect(r.withKeptTaps([row()])).toEqual([row({ status: 'taken', acted_at: new Date(NOW).toISOString() })])
+    answer([row()])
+    await r.syncReminders()
+    window.removeEventListener(r.REMINDER_ACTED, told)
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(r.withKeptTaps([row()])).toEqual([row()]) // sent: what the server says counts again
+  })
+})
+
+describe('withKeptTaps', () => {
+  const keep = (a: object) => localStorage.setItem('medtracker-reminder-actions', JSON.stringify([{ medId: 'm1', scheduledFor: DUE, minutes: 10, at: NOW, ...a }]))
+  const other = row({ id: 'd2', scheduled_for: '2026-10-21T12:00:00.000Z' })
+
+  it('a kept Snooze shows when the dose rings again', () => {
+    keep({ action: 'snooze' })
+    expect(r.withKeptTaps([row(), other])).toEqual([row({ snoozed_until: new Date(NOW + 10 * 60_000).toISOString() }), other])
+  })
+
+  it('matches the dose time however the server writes it, and leaves a dose no longer due alone', () => {
+    keep({ action: 'taken' })
+    expect(r.withKeptTaps([row({ scheduled_for: '2026-10-21T00:00:00+00:00' })])[0].status).toBe('taken')
+    expect(r.withKeptTaps([row({ status: 'skipped' })])).toEqual([row({ status: 'skipped' })])
+  })
 })
 
 describe('notification buttons with the app closed (MT-145)', () => {

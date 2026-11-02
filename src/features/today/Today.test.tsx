@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { REMINDER_ACTED } from '../../native/reminders'
 import Today from './Today'
 import { addDays, todayIn } from './dayRange'
 
@@ -229,6 +230,25 @@ describe('Today', () => {
     renderToday()
     await waitFor(() => expect(api.closeStale).toHaveBeenCalled())
     expect(api.closeStale).toHaveBeenCalledWith(new Set(['d1', 'd2']))
+  })
+
+  it('a Taken tapped on a reminder shows at once, even over a reload the server has not caught up on (MT-150)', async () => {
+    const due = () => [dose('d1', '2026-10-19T13:00:00Z', 'pending'), dose('d2', '2026-10-19T17:00:00Z', 'pending')]
+    api.listDoses.mockImplementation(() => Promise.resolve(due()))
+    renderToday()
+    expect(await screen.findAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2)
+    const answers: ((d: unknown[]) => void)[] = []
+    api.listDoses.mockImplementation(() => new Promise((res) => answers.push(res)))
+    act(() => void document.dispatchEvent(new Event('visibilitychange'))) // back in the app: reload starts
+    localStorage.setItem(
+      'medtracker-reminder-actions',
+      JSON.stringify([{ action: 'taken', medId: 'm1', scheduledFor: '2026-10-19T13:00:00.000Z', minutes: 10, at: Date.parse('2026-10-19T13:01:00Z') }]),
+    )
+    act(() => void window.dispatchEvent(new Event(REMINDER_ACTED)))
+    expect(await screen.findByText('1 of 2 taken')).toBeTruthy()
+    await act(async () => answers.forEach((a) => a(due()))) // the server hasn't heard of the tap yet
+    expect(screen.getByText('1 of 2 taken')).toBeTruthy()
+    localStorage.clear()
   })
 
   it('marking a dose in the app closes its notification', async () => {
