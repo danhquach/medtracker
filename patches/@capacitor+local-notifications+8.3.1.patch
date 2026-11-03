@@ -226,20 +226,23 @@ index 0000000..184dbb6
 +    }
 +}
 diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
-index 52def58..0a690a0 100644
+index 52def58..35916bf 100644
 --- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
 +++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
-@@ -9,6 +9,9 @@ import android.content.Context
+@@ -9,6 +9,12 @@ import android.content.Context
  import android.content.Intent
  import android.os.Build
  import com.getcapacitor.Logger
 +import org.json.JSONObject
 +import java.net.HttpURLConnection
 +import java.net.URL
++import java.util.concurrent.Executors
++import java.util.concurrent.TimeUnit
++import java.util.concurrent.atomic.AtomicReference
  import java.text.SimpleDateFormat
  import java.util.Date
  
-@@ -37,9 +40,29 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+@@ -37,9 +43,30 @@ class TimedNotificationPublisher : BroadcastReceiver() {
          }
          val storage = NotificationStorage(context)
          val notificationJson = storage.getSavedNotificationAsJSObject(id.toString())
@@ -263,6 +266,7 @@ index 52def58..0a690a0 100644
 +                } else {
 +                    // Marked elsewhere: an earlier reminder for it that's still showing goes too.
 +                    clearGroup(notificationManager, storage, notification, id)
++                    rescheduleNotificationIfNeeded(context, intent, id)
 +                    Logger.debug(Logger.tags("LN"), "notification $id skipped: dose no longer due")
 +                }
 +            } finally {
@@ -272,7 +276,7 @@ index 52def58..0a690a0 100644
          // The notification's record stays in storage after firing (matching the
          // legacy plugin) so a triggered notification's full data — sound, extra,
          // badge, at — remains queryable via getByIds()/getAll(). It's removed only
-@@ -47,6 +70,58 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+@@ -47,6 +74,68 @@ class TimedNotificationPublisher : BroadcastReceiver() {
          // shade (NotificationDismissReceiver).
      }
  
@@ -304,39 +308,48 @@ index 52def58..0a690a0 100644
 +            }
 +    }
 +
-+    // MedTracker (MT-152): false only when the server answers that the dose no longer needs a reminder.
++    // MedTracker (MT-152): false only when the server answers in time that the dose no longer
++    // needs a reminder. One deadline covers it all (name lookup, connect, send, read), well inside
++    // the 10 s a receiver may run, so a stalled network can't cost the reminder.
 +    private fun stillWanted(check: JSONObject, extra: JSONObject): Boolean {
-+        return try {
-+            val conn = URL(check.getString("url")).openConnection() as HttpURLConnection
-+            conn.connectTimeout = CHECK_TIMEOUT_MS
-+            conn.readTimeout = CHECK_TIMEOUT_MS
-+            conn.requestMethod = "POST"
-+            conn.doOutput = true
-+            conn.setRequestProperty("content-type", "application/json")
-+            conn.setRequestProperty("apikey", check.getString("apikey"))
++        val conn = AtomicReference<HttpURLConnection?>()
++        val ask = Executors.newSingleThreadExecutor()
++        val answer = ask.submit<Boolean> {
++            val c = URL(check.getString("url")).openConnection() as HttpURLConnection
++            conn.set(c)
++            c.connectTimeout = CHECK_DEADLINE_MS
++            c.readTimeout = CHECK_DEADLINE_MS
++            c.requestMethod = "POST"
++            c.doOutput = true
++            c.setRequestProperty("content-type", "application/json")
++            c.setRequestProperty("apikey", check.getString("apikey"))
 +            val body = JSONObject()
 +                .put("token", check.getString("token"))
 +                .put("medId", extra.getString("medId"))
 +                .put("scheduledFor", extra.getString("scheduledFor"))
-+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
-+            if (conn.responseCode != 200) return true
-+            val answer = conn.inputStream.bufferedReader().use { it.readText() }
-+            JSONObject(answer).optBoolean("ring", true)
++            c.outputStream.use { it.write(body.toString().toByteArray()) }
++            c.responseCode != 200 || JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optBoolean("ring", true)
++        }
++        return try {
++            answer.get(CHECK_DEADLINE_MS.toLong(), TimeUnit.MILLISECONDS)
 +        } catch (e: Exception) {
 +            Logger.debug(Logger.tags("LN"), "dose check failed, ringing: $e")
 +            true
++        } finally {
++            answer.cancel(true)
++            conn.get()?.disconnect() // also ends a request still waiting on the network
++            ask.shutdownNow()
 +        }
 +    }
 +
      private fun rescheduleNotificationIfNeeded(context: Context, intent: Intent, id: Int): Boolean {
          val dateString = intent.getStringExtra(CRON_KEY) ?: return false
  
-@@ -79,5 +154,8 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+@@ -79,5 +168,7 @@ class TimedNotificationPublisher : BroadcastReceiver() {
      companion object {
          const val NOTIFICATION_KEY = "NotificationPublisher.notification"
          const val CRON_KEY = "NotificationPublisher.cron"
 +
-+        // Two waits of this each stay well inside the 10 s a receiver may run.
-+        private const val CHECK_TIMEOUT_MS = 3000
++        private const val CHECK_DEADLINE_MS = 4000
      }
  }

@@ -91,7 +91,7 @@ describe('checking a reminder as it rings (MT-152)', () => {
   const extras = () => (h.ln.schedule.mock.calls.at(-1)![0].notifications as unknown as { extra: Record<string, unknown> }[]).map((n) => n.extra)
 
   it('each reminder carries what it needs to ask the server, with a token fetched once and kept', async () => {
-    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 30 * DAY }, error: null })
+    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 14 * DAY }, error: null })
     await r.syncReminders()
     expect(h.invoke).toHaveBeenCalledWith('reminder-check', { body: {} })
     for (const e of extras()) {
@@ -102,11 +102,11 @@ describe('checking a reminder as it rings (MT-152)', () => {
   })
 
   it('renews the token while it still covers the planned week, keeping the old one if that fails', async () => {
-    localStorage.setItem('medtracker-reminder-check', JSON.stringify({ token: 'old', exp: NOW + 10 * DAY }))
+    localStorage.setItem('medtracker-reminder-check', JSON.stringify({ token: 'old', exp: NOW + 7.5 * DAY }))
     await r.syncReminders()
     expect(h.invoke).toHaveBeenCalledTimes(1)
     expect(extras()[0].check).toMatchObject({ token: 'old' })
-    h.invoke.mockResolvedValue({ data: { token: 'new', exp: NOW + 30 * DAY }, error: null })
+    h.invoke.mockResolvedValue({ data: { token: 'new', exp: NOW + 14 * DAY }, error: null })
     await r.syncReminders()
     expect(extras()[0].check).toMatchObject({ token: 'new' })
   })
@@ -120,7 +120,7 @@ describe('checking a reminder as it rings (MT-152)', () => {
   })
 
   it('sign-out forgets the token', async () => {
-    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 30 * DAY }, error: null })
+    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 14 * DAY }, error: null })
     await r.syncReminders()
     await r.forgetReminders()
     expect(localStorage.getItem('medtracker-reminder-check')).toBeNull()

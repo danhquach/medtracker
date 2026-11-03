@@ -16,6 +16,8 @@ describe('shouldRing', () => {
   it('stays quiet while a snooze made elsewhere runs, and rings when it ends', () => {
     expect(shouldRing(med, { status: 'pending', snoozed_until: '2026-11-03T15:10:00Z' }, now)).toBe(false)
     expect(shouldRing(med, { status: 'pending', snoozed_until: '2026-11-03T15:00:30Z' }, now)).toBe(true)
+    expect(shouldRing(med, { status: 'pending', snoozed_until: '2026-11-03T15:01:00Z' }, now)).toBe(true) // exactly the slack
+    expect(shouldRing(med, { status: 'pending', snoozed_until: '2026-11-03T15:01:01Z' }, now)).toBe(false)
     expect(shouldRing(med, { status: 'pending', snoozed_until: '2026-11-03T14:50:00Z' }, now)).toBe(true)
   })
   it('stays quiet when the med was deleted, paused or had reminders turned off', () => {

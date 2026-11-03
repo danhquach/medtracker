@@ -13,7 +13,7 @@ const cors = {
 }
 
 const MAX_BODY = 4096
-const TOKEN_DAYS = 30
+const TOKEN_DAYS = 14
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const reply = (status: number, body: unknown) => Response.json(body, { status, headers: cors })
 const opts = { auth: { persistSession: false, autoRefreshToken: false } }

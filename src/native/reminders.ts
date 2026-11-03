@@ -20,8 +20,8 @@ const SNOOZES_KEY = 'medtracker-reminder-snoozes'
 const ACTIONS_KEY = 'medtracker-reminder-actions'
 const RUNG_KEY = 'medtracker-reminder-rung'
 const CHECK_KEY = 'medtracker-reminder-check'
-// Renewed while it still covers a reminder set now for the last planned day, and some days more.
-const CHECK_RENEW_MS = (DAYS + 7) * 86_400_000
+// Renewed while it still covers a reminder set now for the last planned day (it lives 14 days).
+const CHECK_RENEW_MS = (DAYS + 1) * 86_400_000
 
 // The plugin check, not just "native": the live-site app runs new web code on whatever APK is
 // installed, and one without the plugin falls back to the web path instead of crashing.
