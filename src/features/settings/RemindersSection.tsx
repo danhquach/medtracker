@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Profile } from '../../lib/types'
+import { allowBackgroundUse, backgroundRestricted } from '../../native/backgroundUse'
 import { isNativeApp, showTestReminder } from '../../native/reminders'
 import { deviceLabel, enablePushOnThisDevice, setDeviceEnabled } from '../../push/subscribe'
 import { Button } from '../../components/Button'
@@ -56,6 +57,16 @@ export default function RemindersSection({
   onNotice: (notice: string | null) => void
 }) {
   const [pendingDevice, setPendingDevice] = useState(false)
+  const [restricted, setRestricted] = useState(false)
+
+  // Checked again on return from the system prompt.
+  useEffect(() => {
+    const check = () => void backgroundRestricted().then(setRestricted)
+    const onVisible = () => document.visibilityState === 'visible' && check()
+    check()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   async function toggleDevice() {
     if (pendingDevice) return
@@ -118,6 +129,17 @@ export default function RemindersSection({
               aria-busy={pendingDevice}
               onChange={() => void toggleDevice()}
             />
+          </Row>
+        )}
+        {device.state === 'on' && restricted && (
+          <Row
+            name="Battery use"
+            desc="Set it to Unrestricted so a dose you mark on another device doesn't still ring on this phone."
+            wide
+          >
+            <Button onClick={() => void allowBackgroundUse().catch((e: unknown) => onError(msg(e, 'Could not open battery settings')))}>
+              Set to Unrestricted
+            </Button>
           </Row>
         )}
         {device.state === 'on' && (

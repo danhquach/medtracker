@@ -17,6 +17,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(TapHapticsPlugin.class);
         registerPlugin(LabelReaderPlugin.class);
+        registerPlugin(BackgroundUsePlugin.class);
         super.onCreate(savedInstanceState);
         ControlPress press = new ControlPress();
         bridge.getWebView().addJavascriptInterface(press, "MedTrackerPress");

@@ -9,6 +9,7 @@ import { sameTime } from '../data/offline/ops'
 import { subscribe } from '../data/offline/sync'
 import { getProfile } from '../data/profile'
 import { addDays, localDayRange, todayIn } from '../features/today/dayRange'
+import { supabase } from '../lib/supabase'
 import { planReminders, reminderId } from './plan'
 
 const CHANNEL = 'dose-reminders'
@@ -18,6 +19,9 @@ const ENABLED_KEY = 'medtracker-reminders-on'
 const SNOOZES_KEY = 'medtracker-reminder-snoozes'
 const ACTIONS_KEY = 'medtracker-reminder-actions'
 const RUNG_KEY = 'medtracker-reminder-rung'
+const CHECK_KEY = 'medtracker-reminder-check'
+// Renewed while it still covers a reminder set now for the last planned day, and some days more.
+const CHECK_RENEW_MS = (DAYS + 7) * 86_400_000
 
 // The plugin check, not just "native": the live-site app runs new web code on whatever APK is
 // installed, and one without the plugin falls back to the web path instead of crashing.
@@ -92,6 +96,7 @@ export async function forgetReminders(): Promise<void> {
     write(SNOOZES_KEY, null)
     write(ACTIONS_KEY, null)
     write(RUNG_KEY, null)
+    write(CHECK_KEY, null)
     await cancelAll()
     await (await plugin()).LocalNotifications.removeAllDeliveredNotifications()
   }
@@ -111,6 +116,29 @@ let queue: Promise<void> = Promise.resolve()
 function enqueue(task: () => Promise<void>): Promise<void> {
   queue = queue.then(task, task)
   return queue
+}
+
+type CheckToken = { token: string; exp: number }
+type RingCheck = { url: string; apikey: string; token: string }
+
+/**
+ * What a reminder sends as it rings to ask whether its dose still needs it, as it may have been
+ * marked on another device since (MT-152). Null (signed out, offline with none kept, the mock
+ * backend) sets reminders that ring without asking.
+ */
+async function ringCheck(now: number): Promise<RingCheck | null> {
+  let kept = read<CheckToken | null>(CHECK_KEY, null)
+  if (!kept || kept.exp - now < CHECK_RENEW_MS) {
+    try {
+      const { data, error } = await supabase.functions.invoke<CheckToken>('reminder-check', { body: {} })
+      if (!error && data?.token) write(CHECK_KEY, (kept = data))
+    } catch {
+      // offline: the kept one, if any, still works until it runs out
+    }
+  }
+  if (!kept || kept.exp <= now) return null
+  const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/reminder-check`
+  return { url, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, token: kept.token }
 }
 
 /** Replace the phone's scheduled reminders with the plan from current data. */
@@ -153,6 +181,7 @@ async function runSync(): Promise<void> {
     return (row && row.status !== 'pending') || plan.some((r) => r.id === n.id)
   })
   if (done.length) await ln.removeDeliveredNotifications({ notifications: done })
+  const check = await ringCheck(now)
   if (!remindersEnabled()) return // turned off or signed out while the data loaded
   // Schedule first (same id replaces), then cancel the rest: a failed schedule keeps the old plan.
   const { notifications: before } = await ln.getPending()
@@ -167,7 +196,7 @@ async function runSync(): Promise<void> {
         autoCancel: true,
         // One per dose: when a repeat fires, the patched plugin clears the shown one in its group.
         group: `dose-${reminderId(r.medId, r.scheduledFor)}`,
-        extra: { medId: r.medId, scheduledFor: r.scheduledFor, snoozeMinutes: input.repeatMinutes },
+        extra: { medId: r.medId, scheduledFor: r.scheduledFor, snoozeMinutes: input.repeatMinutes, ...(check && { check }) },
         schedule: { at: new Date(r.at), allowWhileIdle: true },
       })),
     })

@@ -226,25 +226,117 @@ index 0000000..184dbb6
 +    }
 +}
 diff --git a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
-index 52def58..11c214d 100644
+index 52def58..0a690a0 100644
 --- a/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
 +++ b/node_modules/@capacitor/local-notifications/android/src/main/kotlin/com/capacitorjs/plugins/localnotifications/TimedNotificationPublisher.kt
-@@ -38,6 +38,18 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+@@ -9,6 +9,9 @@ import android.content.Context
+ import android.content.Intent
+ import android.os.Build
+ import com.getcapacitor.Logger
++import org.json.JSONObject
++import java.net.HttpURLConnection
++import java.net.URL
+ import java.text.SimpleDateFormat
+ import java.util.Date
+ 
+@@ -37,9 +40,29 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+         }
          val storage = NotificationStorage(context)
          val notificationJson = storage.getSavedNotificationAsJSObject(id.toString())
-         LocalNotificationsPlugin.fireReceived(notificationJson)
-+        // MedTracker (MT-125): a repeat replaces the reminder already shown for the same dose
-+        // (same group) instead of stacking a second one next to it. Its record goes as on a swipe.
-+        notification.group?.let { group ->
-+            notificationManager.activeNotifications
-+                .filter { it.id != id && it.notification.group == group }
-+                .forEach {
-+                    notificationManager.cancel(it.tag, it.id)
-+                    if (LocalNotificationManager.isSafeToForget(storage.getSavedNotification(it.id.toString()))) {
-+                        storage.deleteNotification(it.id.toString())
-+                    }
-+                }
+-        LocalNotificationsPlugin.fireReceived(notificationJson)
+-        notificationManager.notify(id, notification)
+-        rescheduleNotificationIfNeeded(context, intent, id)
++        // MedTracker (MT-152): a dose reminder first asks the server whether the dose still needs
++        // it, since it may have been marked on another device after this phone set the alarm.
++        // No answer in time (offline, or the phone's battery saver blocks the network) rings anyway.
++        val extra = notificationJson?.optJSONObject("extra")
++        val check = extra?.optJSONObject("check")
++        if (check == null) {
++            publish(context, intent, notificationManager, storage, notification, id)
++            return
 +        }
-         notificationManager.notify(id, notification)
-         rescheduleNotificationIfNeeded(context, intent, id)
++        val pending = goAsync()
++        Thread {
++            try {
++                if (stillWanted(check, extra)) {
++                    publish(context, intent, notificationManager, storage, notification, id)
++                } else {
++                    // Marked elsewhere: an earlier reminder for it that's still showing goes too.
++                    clearGroup(notificationManager, storage, notification, id)
++                    Logger.debug(Logger.tags("LN"), "notification $id skipped: dose no longer due")
++                }
++            } finally {
++                pending.finish()
++            }
++        }.start()
          // The notification's record stays in storage after firing (matching the
+         // legacy plugin) so a triggered notification's full data — sound, extra,
+         // badge, at — remains queryable via getByIds()/getAll(). It's removed only
+@@ -47,6 +70,58 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+         // shade (NotificationDismissReceiver).
+     }
+ 
++    private fun publish(
++        context: Context,
++        intent: Intent,
++        notificationManager: NotificationManager,
++        storage: NotificationStorage,
++        notification: Notification,
++        id: Int,
++    ) {
++        LocalNotificationsPlugin.fireReceived(storage.getSavedNotificationAsJSObject(id.toString()))
++        clearGroup(notificationManager, storage, notification, id)
++        notificationManager.notify(id, notification)
++        rescheduleNotificationIfNeeded(context, intent, id)
++    }
++
++    // MedTracker (MT-125): a repeat replaces the reminder already shown for the same dose
++    // (same group) instead of stacking a second one next to it. Its record goes as on a swipe.
++    private fun clearGroup(notificationManager: NotificationManager, storage: NotificationStorage, notification: Notification, id: Int) {
++        val group = notification.group ?: return
++        notificationManager.activeNotifications
++            .filter { it.id != id && it.notification.group == group }
++            .forEach {
++                notificationManager.cancel(it.tag, it.id)
++                if (LocalNotificationManager.isSafeToForget(storage.getSavedNotification(it.id.toString()))) {
++                    storage.deleteNotification(it.id.toString())
++                }
++            }
++    }
++
++    // MedTracker (MT-152): false only when the server answers that the dose no longer needs a reminder.
++    private fun stillWanted(check: JSONObject, extra: JSONObject): Boolean {
++        return try {
++            val conn = URL(check.getString("url")).openConnection() as HttpURLConnection
++            conn.connectTimeout = CHECK_TIMEOUT_MS
++            conn.readTimeout = CHECK_TIMEOUT_MS
++            conn.requestMethod = "POST"
++            conn.doOutput = true
++            conn.setRequestProperty("content-type", "application/json")
++            conn.setRequestProperty("apikey", check.getString("apikey"))
++            val body = JSONObject()
++                .put("token", check.getString("token"))
++                .put("medId", extra.getString("medId"))
++                .put("scheduledFor", extra.getString("scheduledFor"))
++            conn.outputStream.use { it.write(body.toString().toByteArray()) }
++            if (conn.responseCode != 200) return true
++            val answer = conn.inputStream.bufferedReader().use { it.readText() }
++            JSONObject(answer).optBoolean("ring", true)
++        } catch (e: Exception) {
++            Logger.debug(Logger.tags("LN"), "dose check failed, ringing: $e")
++            true
++        }
++    }
++
+     private fun rescheduleNotificationIfNeeded(context: Context, intent: Intent, id: Int): Boolean {
+         val dateString = intent.getStringExtra(CRON_KEY) ?: return false
+ 
+@@ -79,5 +154,8 @@ class TimedNotificationPublisher : BroadcastReceiver() {
+     companion object {
+         const val NOTIFICATION_KEY = "NotificationPublisher.notification"
+         const val CRON_KEY = "NotificationPublisher.cron"
++
++        // Two waits of this each stay well inside the 10 s a receiver may run.
++        private const val CHECK_TIMEOUT_MS = 3000
+     }
+ }

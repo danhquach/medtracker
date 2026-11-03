@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { signActionToken, verifyActionToken } from './actionToken'
+import { signActionToken, signCheckToken, verifyActionToken, verifyCheckToken } from './actionToken'
 
 const key = 'k'.repeat(32)
 const claims = { doseId: 'd-1', userId: 'u-1', exp: Date.now() + 60_000 }
@@ -30,5 +30,22 @@ describe('action token', () => {
     expect(await verifyActionToken('garbage', key)).toBeNull()
     expect(await verifyActionToken('a.b.c', key)).toBeNull()
     expect(await verifyActionToken('', key)).toBeNull()
+  })
+})
+
+describe('check token', () => {
+  const check = { kind: 'check' as const, userId: 'u-1', exp: Date.now() + 60_000 }
+
+  it('round-trips claims', async () => {
+    expect(await verifyCheckToken(await signCheckToken(check, key), key)).toEqual(check)
+  })
+  it('rejects wrong key and expired', async () => {
+    const t = await signCheckToken(check, key)
+    expect(await verifyCheckToken(t, 'z'.repeat(32))).toBeNull()
+    expect(await verifyCheckToken(t, key, check.exp + 1)).toBeNull()
+  })
+  it('is never accepted as an action token, nor an action token as a check token', async () => {
+    expect(await verifyActionToken(await signCheckToken(check, key), key)).toBeNull()
+    expect(await verifyCheckToken(await signActionToken(claims, key), key)).toBeNull()
   })
 })
