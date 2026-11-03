@@ -16,7 +16,7 @@ export default defineConfig({
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/*.test.ts',
-      'supabase/functions/_shared/{refill,actionToken,pushPolicy,reminderRun}.test.ts',
+      'supabase/functions/_shared/{refill,actionToken,pushPolicy,reminderRun,reminderCheck}.test.ts',
     ],
   },
 })

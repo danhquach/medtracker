@@ -27,6 +27,8 @@ const m = vi.hoisted(() => ({
   showNotification: vi.fn(() => Promise.resolve()),
   canShare: false,
   shareFile: vi.fn(() => Promise.resolve()),
+  restricted: false,
+  allowBackgroundUse: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../auth/useSession', () => ({ useSession: () => ({ loading: false, user: m.session.user }) }))
@@ -45,6 +47,10 @@ vi.mock('../../lib/supabase', () => ({
 }))
 vi.mock('../notifications/useDeviceNotificationState', () => ({
   useDeviceNotificationState: () => ({ state: m.deviceState.state, refresh: m.refresh }),
+}))
+vi.mock('../../native/backgroundUse', () => ({
+  backgroundRestricted: () => Promise.resolve(m.restricted),
+  allowBackgroundUse: m.allowBackgroundUse,
 }))
 vi.mock('../../native/shareFile', () => ({ canShareFile: () => m.canShare, shareFile: m.shareFile }))
 vi.mock('../../push/subscribe', () => ({
@@ -66,6 +72,7 @@ beforeEach(() => {
   asUser()
   m.deviceState.state = 'off'
   m.canShare = false
+  m.restricted = false
   m.getProfile.mockResolvedValue(profile)
   m.updateProfile.mockImplementation((patch) => Promise.resolve({ ...profile, ...patch }))
   m.invoke.mockResolvedValue({ data: {}, error: null })
@@ -245,6 +252,25 @@ describe('Settings', () => {
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: 'Send test notification' }))
     await waitFor(() => expect(m.showNotification).toHaveBeenCalledWith('Test', expect.any(Object)))
+  })
+
+  it('asks to set battery use to Unrestricted while the phone restricts the app (MT-152)', async () => {
+    m.deviceState.state = 'on'
+    m.restricted = true
+    await loaded()
+    fireEvent.click(await screen.findByRole('button', { name: 'Set to Unrestricted' }))
+    expect(m.allowBackgroundUse).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['unrestricted already', 'on', false],
+    ['reminders off', 'off', true],
+  ])('no battery use row with %s', async (_, state, restricted) => {
+    m.deviceState.state = state
+    m.restricted = restricted
+    await loaded()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByRole('button', { name: 'Set to Unrestricted' })).toBeNull()
   })
 
   it('shows the Android battery tip', async () => {

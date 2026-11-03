@@ -12,7 +12,7 @@ Owner/maintainer reference. New here? Start with the [README](../README.md).
 | [Known risks](#known-risks) | Planning or debugging odd delays |
 | [Manual device checklist](#manual-device-checklist) | Testing on real phones |
 
-**Backend at a glance:** Edge Functions `send-reminders`, `dose-action`, `delete-account` · migrations `0001`–`0007` in `supabase/migrations` · auth: anonymous sign-ins **ON** (guest mode), email confirmation **ON**.
+**Backend at a glance:** Edge Functions `send-reminders`, `dose-action`, `delete-account`, `reminder-check` · migrations `0001`–`0007` in `supabase/migrations` · auth: anonymous sign-ins **ON** (guest mode), email confirmation **ON**.
 
 ---
 

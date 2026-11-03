@@ -64,4 +64,6 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <!-- Android 13+: granted at install for reminder apps, so doses ring at the exact minute. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- MT-152: the one-tap "Unrestricted" prompt, so a reminder can check its dose while the phone is idle. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

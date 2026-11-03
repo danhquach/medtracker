@@ -30,7 +30,8 @@ const h = vi.hoisted(() => {
       taps.splice(0, taps.length, ...taps.filter((t) => (t as { actedAt: number }).actedAt > upTo))
     }),
   }
-  return { ln, pending, taps, listeners, act: (a: unknown) => listeners.localNotificationActionPerformed?.(a) }
+  const invoke = vi.fn()
+  return { ln, pending, taps, listeners, invoke, act: (a: unknown) => listeners.localNotificationActionPerformed?.(a) }
 })
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, isPluginAvailable: () => true } }))
@@ -39,6 +40,7 @@ vi.mock('../data/meds', () => ({ listMeds: vi.fn(), listSchedules: vi.fn() }))
 vi.mock('../data/profile', () => ({ getProfile: vi.fn() }))
 vi.mock('../data/offline/sync', () => ({ subscribe: vi.fn() }))
 vi.mock('../data/doses', () => ({ listDoses: vi.fn(), setDoseStatus: vi.fn(), snoozeDose: vi.fn(), SNOOZE_MINUTES: [5, 10, 15, 30, 60] }))
+vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke: h.invoke } } }))
 
 const meds = await import('../data/meds')
 const profile = await import('../data/profile')
@@ -81,6 +83,48 @@ beforeEach(() => {
   vi.mocked(meds.listSchedules).mockResolvedValue([sched])
   vi.mocked(profile.getProfile).mockResolvedValue(prof)
   vi.mocked(doses.listDoses).mockResolvedValue([])
+  h.invoke.mockResolvedValue({ data: null, error: new Error('offline') })
+})
+
+describe('checking a reminder as it rings (MT-152)', () => {
+  const DAY = 86_400_000
+  const extras = () => (h.ln.schedule.mock.calls.at(-1)![0].notifications as unknown as { extra: Record<string, unknown> }[]).map((n) => n.extra)
+
+  it('each reminder carries what it needs to ask the server, with a token fetched once and kept', async () => {
+    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 14 * DAY }, error: null })
+    await r.syncReminders()
+    expect(h.invoke).toHaveBeenCalledWith('reminder-check', { body: {} })
+    for (const e of extras()) {
+      expect(e.check).toEqual({ url: expect.stringMatching(/\/functions\/v1\/reminder-check$/), apikey: expect.any(String), token: 't1' })
+    }
+    await r.syncReminders()
+    expect(h.invoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('renews the token while it still covers the planned week, keeping the old one if that fails', async () => {
+    localStorage.setItem('medtracker-reminder-check', JSON.stringify({ token: 'old', exp: NOW + 7.5 * DAY }))
+    await r.syncReminders()
+    expect(h.invoke).toHaveBeenCalledTimes(1)
+    expect(extras()[0].check).toMatchObject({ token: 'old' })
+    h.invoke.mockResolvedValue({ data: { token: 'new', exp: NOW + 14 * DAY }, error: null })
+    await r.syncReminders()
+    expect(extras()[0].check).toMatchObject({ token: 'new' })
+  })
+
+  it('rings without asking when there is no token (signed out, never online, mock backend)', async () => {
+    await r.syncReminders()
+    expect(extras()[0]).not.toHaveProperty('check')
+    h.invoke.mockRejectedValue(new Error('fetch failed'))
+    await r.syncReminders()
+    expect(extras()[0]).not.toHaveProperty('check')
+  })
+
+  it('sign-out forgets the token', async () => {
+    h.invoke.mockResolvedValue({ data: { token: 't1', exp: NOW + 14 * DAY }, error: null })
+    await r.syncReminders()
+    await r.forgetReminders()
+    expect(localStorage.getItem('medtracker-reminder-check')).toBeNull()
+  })
 })
 
 describe('syncReminders', () => {
