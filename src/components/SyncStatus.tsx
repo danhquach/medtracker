@@ -25,12 +25,31 @@ function describe(op: Op): string {
 
 const medIdOf = (op: Op) => ('medId' in op ? op.medId : op.kind === 'saveMed' ? op.med.id : null)
 
-/** Offline / syncing / failed-sync line under the header. Renders nothing when all is synced. */
-export default function SyncStatus() {
+function useSyncStatus(): Status | null {
   const [s, setS] = useState<Status | null>(null)
+  useEffect(() => subscribe(setS), [])
+  return s
+}
+
+/**
+ * "Syncing…" sits in the header, not on its own line: every Taken / Skip / Undo starts a
+ * short sync, and a line appearing above Today would push every row down (MT-154).
+ */
+export function SyncingNote() {
+  const s = useSyncStatus()
+  const on = !!s && s.online && !s.needsSignIn && s.syncing && s.pending > 0
+  return (
+    <span className="sync-note" role="status">
+      {on ? 'Syncing…' : ''}
+    </span>
+  )
+}
+
+/** Offline / failed-sync line under the header. Renders nothing when all is synced. */
+export default function SyncStatus() {
+  const s = useSyncStatus()
   const [open, setOpen] = useState(false)
   const [names, setNames] = useState<Record<string, string>>({})
-  useEffect(() => subscribe(setS), [])
   const failed = s?.failed ?? []
   useEffect(() => {
     if (!open || failed.length === 0) return
@@ -48,9 +67,7 @@ export default function SyncStatus() {
       ? s.pending > 0
         ? `Offline — ${changes(s.pending)} waiting`
         : 'Offline'
-      : s.syncing && s.pending > 0
-        ? 'Syncing…'
-        : null
+      : null
   if (!line && failed.length === 0) return null
 
   return (

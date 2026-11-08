@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, matchPath, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { BackIcon, CalendarIcon, HistoryIcon, PillIcon, SettingsIcon } from './components/icons'
 import { Loading } from './components/states'
-import SyncStatus from './components/SyncStatus'
+import SyncStatus, { SyncingNote } from './components/SyncStatus'
 import { bootSession } from './data/boot'
 import EmailLinkNotice from './features/auth/EmailLinkNotice'
 import Welcome from './features/auth/Welcome'
@@ -54,6 +54,7 @@ function AppHeader() {
         </Button>
       )}
       <h1>{day ? dayTitle(day) : (screen?.title ?? 'MedTracker')}</h1>
+      <SyncingNote />
       {screen?.path !== '/settings' && (
         <Link to="/settings" className="icon-button" aria-label="Settings">
           <SettingsIcon />
