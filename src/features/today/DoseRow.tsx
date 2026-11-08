@@ -47,22 +47,27 @@ export default function DoseRow({
   const [picking, setPicking] = useState(false)
 
   // Done for the day: stays in place, dimmed. Undo puts a wrong tap back to due.
+  // Same name-over-actions layout as a due row, so marking or undoing doesn't move the rows below (MT-154).
   if (dose.status === 'taken' || dose.status === 'skipped') {
     const word = dose.status === 'taken' ? 'Taken' : 'Skipped'
     const at = dose.acted_at ? ` ${timeLabel(dose.acted_at, tz)}` : ''
     return (
-      <Card className="dose-row is-done">
-        <Link className="dose-name" to={`/history/${dose.medication_id}`}>
-          <MedName med={med} />
+      <Card className="dose-row is-marked">
+        <div className="dose-info">
+          <Link className="dose-name" to={`/history/${dose.medication_id}`}>
+            <MedName med={med} />
+          </Link>
+        </div>
+        <div className="dose-actions">
           <span className={`status status-${dose.status}`}>
             {dose.status === 'taken' && <span aria-hidden="true">✓ </span>}
             {word}
             {at}
           </span>
-        </Link>
-        <Button variant="quiet" onClick={() => onSet('pending')} aria-label={`Undo ${word} ${label}`}>
-          Undo
-        </Button>
+          <Button variant="quiet" onClick={() => onSet('pending')} aria-label={`Undo ${word} ${label}`}>
+            Undo
+          </Button>
+        </div>
       </Card>
     )
   }

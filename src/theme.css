@@ -565,11 +565,30 @@ input[role='switch']:disabled {
   text-decoration: none;
 }
 
-/* A due dose: name and status on top, actions in one aligned row under it, picker below that. */
-.dose-row.is-due {
+/* A due dose: name and status on top, actions in one aligned row under it, picker below that.
+   A marked (taken / skipped) dose keeps the same two rows, so it doesn't change height (MT-154). */
+.dose-row.is-due,
+.dose-row.is-marked {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+}
+
+.dose-row.is-marked {
+  color: var(--text-muted);
+}
+
+/* Status where Skip was, Undo at the row's far edge. */
+.dose-row.is-marked .dose-actions {
+  align-items: center;
+}
+
+.dose-row.is-marked .dose-actions .status {
+  margin-left: 0;
+}
+
+.dose-row.is-marked .dose-actions button {
+  margin-left: auto;
 }
 
 .dose-info {
@@ -603,7 +622,8 @@ input[role='switch']:disabled {
 
 /* Compact, equal-sized controls left-aligned under the name, so the name leads the card.
    Still 44px tall: these are the most-tapped targets in the app (MT-134). */
-.dose-row.is-due .dose-actions button {
+.dose-row.is-due .dose-actions button,
+.dose-row.is-marked .dose-actions button {
   min-width: 80px;
   min-height: 44px;
   padding: 6px 14px;
