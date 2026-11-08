@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OutboxItem } from '../data/offline/store'
 import type { SyncStatus as Status } from '../data/offline/sync'
-import SyncStatus from './SyncStatus'
+import SyncStatus, { SyncingNote } from './SyncStatus'
 import { changes } from './syncCopy'
 
 const m = vi.hoisted(() => ({
@@ -51,10 +51,27 @@ describe('SyncStatus', () => {
     expect(screen.getByRole('status').textContent).toBe('Offline')
   })
 
-  it('shows syncing while pending changes are sent', () => {
-    render(<SyncStatus />)
+  it('adds no line under the header while syncing, so Today rows stay put (MT-154)', () => {
+    const { container } = render(<SyncStatus />)
+    set({ syncing: true, pending: 1 })
+    expect(container.textContent).toBe('')
+  })
+
+  it('header note shows syncing while pending changes are sent, then clears', () => {
+    render(<SyncingNote />)
+    expect(screen.getByRole('status').textContent).toBe('')
     set({ syncing: true, pending: 1 })
     expect(screen.getByRole('status').textContent).toBe('Syncing…')
+    set({ syncing: false, pending: 0 })
+    expect(screen.getByRole('status').textContent).toBe('')
+  })
+
+  it('header note stays empty when offline or signed out', () => {
+    render(<SyncingNote />)
+    set({ online: false, syncing: true, pending: 1 })
+    expect(screen.getByRole('status').textContent).toBe('')
+    set({ needsSignIn: true, syncing: true, pending: 1 })
+    expect(screen.getByRole('status').textContent).toBe('')
   })
 
   it('shows sign in again when needsSignIn', () => {

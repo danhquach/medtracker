@@ -54,6 +54,18 @@ body {
   margin-left: 0;
 }
 
+/* "Syncing…" next to the settings icon (SyncingNote); empty when idle, so it takes no room. */
+.sync-note {
+  font-size: 0.9rem;
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+/* On Settings there's no gear, so keep the note off the screen edge. */
+.app-header .sync-note:last-child {
+  margin-right: 12px;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
