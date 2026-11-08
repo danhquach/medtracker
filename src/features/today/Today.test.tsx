@@ -115,25 +115,40 @@ describe('Today', () => {
     expect(await screen.findByRole('heading', { name: '9:00 AM' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: '1:00 PM' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: /^Taken Aspirin/ })).toHaveLength(2)
-    const done = screen.getByRole('link', { name: /Aspirin 81 mg.*Taken 1:02 PM/ })
+    const undo = screen.getByRole('button', { name: /^Undo Taken Aspirin/ })
+    const done = undo.closest('.dose-row')!.querySelector('a')!
     expect(done.getAttribute('href')).toBe('/history/m1')
+    expect(undo.parentElement!.textContent).toContain('Taken 1:02 PM')
     expect(screen.getByText('1 of 3 taken')).toBeTruthy()
+  })
+
+  it('a marked dose keeps the due row layout, so the rows below don\'t move (MT-154)', async () => {
+    renderToday()
+    const taken = (await screen.findAllByRole('button', { name: /^Taken Aspirin/ }))[0]
+    const shape = (row: Element) => [...row.children].map((c) => c.className)
+    const before = taken.closest('.dose-row')!
+    expect(shape(before)).toEqual(['dose-info', 'dose-actions'])
+    const id = before.querySelector('a')!.getAttribute('href')
+    act(() => taken.click())
+    const undo = await screen.findByRole('button', { name: /^Undo Taken Aspirin/ })
+    const after = undo.closest('.dose-row')!
+    expect(after.querySelector('a')!.getAttribute('href')).toBe(id)
+    expect(shape(after)).toEqual(['dose-info', 'dose-actions']) // name on top, status + Undo underneath
+    expect(undo.parentElement!.className).toBe('dose-actions')
   })
 
   it('a due dose links to its med history by name', async () => {
     renderToday()
     const links = await screen.findAllByRole('link', { name: 'Aspirin 81 mg' })
-    expect(links).toHaveLength(2)
+    expect(links).toHaveLength(3) // two due, one taken: every row links by name alone
     act(() => links[0].click())
     expect(where()).toBe('/history/m1')
   })
 
   it('shows the strength apart from the bold name, on due and done rows (MT-128)', async () => {
     renderToday()
-    const links = [
-      ...(await screen.findAllByRole('link', { name: 'Aspirin 81 mg' })),
-      screen.getByRole('link', { name: /Aspirin 81 mg.*Taken/ }),
-    ]
+    const links = await screen.findAllByRole('link', { name: 'Aspirin 81 mg' })
+    expect(links.filter((l) => l.closest('.is-marked'))).toHaveLength(1) // the done row is covered too
     for (const link of links) {
       expect(link.querySelector('strong')?.textContent).toBe('Aspirin')
       expect(link.querySelector('.dose-strength')?.textContent?.trim()).toBe('81 mg')
@@ -149,7 +164,7 @@ describe('Today', () => {
     expect(screen.getAllByRole('button', { name: /^Skip Aspirin/ })[0].className).not.toContain('primary')
     act(() => taken.click())
     expect(await screen.findByText('2 of 3 taken')).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /Taken/ })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /^Undo Taken/ })).toHaveLength(2)
     expect(api.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
     finish()
   })
