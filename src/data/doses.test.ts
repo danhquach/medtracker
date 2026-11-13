@@ -78,6 +78,18 @@ describe('doses data offline', () => {
     expect(rpc).toHaveBeenCalledWith('set_dose_status', { p_dose: 'zz', p_status: 'skipped' })
   })
 
+  it('setDoseStatus with a tap time keeps that time, not when it was sent (MT-159)', async () => {
+    const at = '2026-10-20T13:45:00.000Z'
+    rpc.mockImplementation(offline)
+    const row = await doses.setDoseStatus('d1', 'taken', at)
+    expect(row).toMatchObject({ status: 'taken', acted_at: at })
+    expect(rpc).toHaveBeenCalledWith('set_dose_status_at', expect.objectContaining({ p_status: 'taken', p_acted_at: at }))
+    rpc.mockReset()
+    rpc.mockImplementation(() => Promise.resolve({ data: dose({ id: 'zz' }), error: null }))
+    await doses.setDoseStatus('zz', 'taken', at)
+    expect(rpc).toHaveBeenCalledWith('set_dose_status', { p_dose: 'zz', p_status: 'taken', p_acted_at: at })
+  })
+
   it('logPrnDose offline adds a taken dose with a client id', async () => {
     rpc.mockImplementation(offline)
     const row = await doses.logPrnDose('m1')

@@ -35,18 +35,21 @@ const rowOrNull = (d: DoseEvent | null): DoseEvent | null => (d && d.id ? d : nu
 /** Shown when setDoseStatus returns null: the dose was regenerated (e.g. its schedule edited on another device). */
 export const STALE_DOSE = 'That dose changed on another device, so nothing was saved. The list is now up to date.'
 
-/** Queued by (med, time), since the dose's id can change when the server regenerates it. */
-export async function setDoseStatus(id: string, status: DoseStatus): Promise<DoseEvent | null> {
+/**
+ * Queued by (med, time), since the dose's id can change when the server regenerates it.
+ * `at`: when it was done, for a tap sent later (MT-159); otherwise now.
+ */
+export async function setDoseStatus(id: string, status: DoseStatus, at?: string): Promise<DoseEvent | null> {
   const dose = (await snapshot())?.doses.find((d) => d.id === id)
   if (!dose) {
-    const { data, error } = await supabase.rpc('set_dose_status', { p_dose: id, p_status: status })
+    const { data, error } = await supabase.rpc('set_dose_status', { p_dose: id, p_status: status, ...(at && { p_acted_at: at }) })
     if (error) throw error
     return rowOrNull(data as DoseEvent | null)
   }
   if (status === 'missed') throw new Error('invalid target status: missed')
   const { medication_id: medId, scheduled_for: scheduledFor } = dose
   try {
-    return await submit({ ...opMeta(), kind: 'doseStatus', medId, scheduledFor, status }, (c) =>
+    return await submit({ ...opMeta(), ...(at && { at }), kind: 'doseStatus', medId, scheduledFor, status }, (c) =>
       c.doses.find((d) => d.medication_id === medId && sameTime(d.scheduled_for, scheduledFor)) ?? null,
     )
   } catch (e) {
