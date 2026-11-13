@@ -229,7 +229,7 @@ async function sendSavedActions(): Promise<void> {
     try {
       const dose = await findDose(a.medId, a.scheduledFor)
       if (!dose) left.push(a)
-      else if (a.action === 'taken') await setDoseStatus(dose.id, 'taken')
+      else if (a.action === 'taken') await setDoseStatus(dose.id, 'taken', new Date(a.at).toISOString()) // when tapped, not when sent (MT-159)
       else if (dose.status === 'pending') await snoozeDose(dose.id, a.minutes)
     } catch (e) {
       console.error('could not send reminder action', e)

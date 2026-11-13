@@ -265,7 +265,7 @@ describe('notification buttons', () => {
   it('Taken marks the dose', async () => {
     vi.mocked(doses.listDoses).mockResolvedValue([row()])
     await tap('taken')
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(NOW).toISOString())
     expect(localStorage.getItem('medtracker-reminder-actions')).toBeNull()
   })
 
@@ -275,7 +275,7 @@ describe('notification buttons', () => {
     expect(JSON.parse(localStorage.getItem('medtracker-reminder-actions')!)).toHaveLength(1)
     vi.mocked(doses.listDoses).mockResolvedValue([row()])
     await r.syncReminders()
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(NOW).toISOString())
     expect(localStorage.getItem('medtracker-reminder-actions')).toBeNull()
   })
 
@@ -311,8 +311,24 @@ describe('notification buttons', () => {
     answer([row()])
     await r.syncReminders()
     window.removeEventListener(r.REMINDER_ACTED, told)
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(NOW).toISOString())
     expect(r.withKeptTaps([row()])).toEqual([row()]) // sent: what the server says counts again
+  })
+
+  it('two Taken taps sent in one sync each keep the time they were tapped (MT-159)', async () => {
+    const tapMed = (medId: string) =>
+      h.act({ actionId: 'taken', notification: { id: reminderId(medId, DUE), title: '', body: '', extra: { medId, scheduledFor: DUE } } })
+    tapMed('m1') // no dose rows yet: both taps wait for a later sync
+    await r.syncReminders()
+    vi.setSystemTime(NOW + 98 * 60_000)
+    tapMed('m2')
+    await r.syncReminders()
+    expect(doses.setDoseStatus).not.toHaveBeenCalled()
+    vi.setSystemTime(NOW + 120 * 60_000)
+    vi.mocked(doses.listDoses).mockResolvedValue([row(), row({ id: 'd2', medication_id: 'm2' })])
+    await r.syncReminders()
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(NOW).toISOString())
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d2', 'taken', new Date(NOW + 98 * 60_000).toISOString())
   })
 })
 
@@ -348,7 +364,7 @@ describe('notification buttons with the app closed (MT-145)', () => {
     h.taps.push(kept('taken', Date.parse(DUE) + 60_000))
     await r.startReminders()
     await settle()
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(Date.parse(DUE) + 60_000).toISOString()) // the tap's time, not the app's start
     expect(h.taps).toEqual([])
   })
 
@@ -368,7 +384,7 @@ describe('notification buttons with the app closed (MT-145)', () => {
     h.taps.push(kept('taken', Date.parse(DUE)))
     h.listeners.reminderActionsWaiting?.({})
     await settle()
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', DUE)
   })
 
   it('the phone forgets a tap only once the app has saved it', async () => {
@@ -422,6 +438,6 @@ describe('switching to the live-site app', () => {
     await tap('taken')
     expect(doses.setDoseStatus).not.toHaveBeenCalled()
     await r.setRemindersEnabled(true)
-    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken')
+    expect(doses.setDoseStatus).toHaveBeenCalledWith('d1', 'taken', new Date(NOW).toISOString())
   })
 })
