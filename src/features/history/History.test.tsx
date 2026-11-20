@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import History from './History'
 
 const renderHistory = (path = '/history') =>
@@ -15,6 +15,7 @@ const renderHistory = (path = '/history') =>
 
 const api = vi.hoisted(() => ({
   listDoses: vi.fn(),
+  firstDoseAt: vi.fn(),
   listMeds: vi.fn(),
   setDoseStatus: vi.fn(),
   closeOne: vi.fn(),
@@ -22,13 +23,21 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../auth/useProfile', () => ({ useProfileState: () => api.profile }))
 vi.mock('../../data/meds', () => ({ listMeds: api.listMeds }))
-vi.mock('../../data/doses', () => ({ listDoses: api.listDoses, setDoseStatus: api.setDoseStatus, STALE_DOSE: 'stale dose' }))
+vi.mock('../../data/doses', () => ({
+  listDoses: api.listDoses,
+  firstDoseAt: api.firstDoseAt,
+  setDoseStatus: api.setDoseStatus,
+  STALE_DOSE: 'stale dose',
+}))
+vi.mock('../../native/shareFile', () => ({ canShareFile: () => false, shareFile: vi.fn() }))
 vi.mock('../../push/closeStale', () => ({ closeDoseNotification: api.closeOne }))
 
 const med = (id: string, name: string, paused = false) => ({ id, name, paused })
 const dose = (id: string, medication_id: string, scheduled_for: string, status: string) => ({
   id, medication_id, scheduled_for, status,
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 // "today" in Toronto = 2026-10-19
 beforeEach(() => {
@@ -41,6 +50,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-19T16:00:00Z'))
   api.listMeds.mockResolvedValue([med('m1', 'Aspirin'), med('m2', 'Paused med', true)])
+  // Aug 1 01:00Z = Jul 31 in Toronto: records go back to July.
+  api.firstDoseAt.mockResolvedValue('2026-08-01T01:00:00Z')
   api.listDoses.mockResolvedValue([
     dose('d1', 'm1', '2026-10-19T13:00:00Z', 'taken'),
     dose('d2', 'm1', '2026-10-18T13:00:00Z', 'skipped'),
@@ -206,6 +217,76 @@ describe('History', () => {
     expect(await screen.findByRole('heading', { name: 'August 2026' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
     expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeTruthy()
+  })
+
+  it('pages back only as far as the oldest dose record, by local day', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    const prev = () => screen.getByRole('button', { name: 'Previous month' }) as HTMLButtonElement
+    for (const m of ['September', 'August', 'July']) {
+      fireEvent.click(prev())
+      await screen.findByRole('heading', { name: `${m} 2026` })
+    }
+    await waitFor(() => expect(prev().disabled).toBe(true))
+  })
+
+  it('stays on the current month when there are no dose records at all', async () => {
+    api.firstDoseAt.mockResolvedValue(null)
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Previous month' }) as HTMLButtonElement).disabled).toBe(true))
+  })
+
+  it('reports the month to date in total and per med, matching the calendar', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    const report = await screen.findByRole('region', { name: 'Month-to-date report' })
+    expect(within(report).getByText(/October 2026, through Mon, Oct 19/)).toBeTruthy()
+    const rows = within(within(report).getByRole('table')).getAllByRole('row').map((r) =>
+      [...r.children].map((c) => c.textContent?.trim()),
+    )
+    expect(rows).toEqual([
+      ['Med', 'Scheduled', 'Taken', 'Skipped', 'Missed', 'Taken %'],
+      ['All meds', '7', '3', '1', '3', '43%'],
+      ['Aspirin', '6', '2', '1', '3', '33%'],
+      ['Paused med (paused)', '1', '1', '0', '0', '100%'],
+    ])
+    expect(within(report).getByRole('button', { name: 'Print report' })).toBeTruthy()
+  })
+
+  it('prints the report', async () => {
+    const print = vi.fn()
+    vi.stubGlobal('print', print)
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Print report' }))
+    expect(print).toHaveBeenCalled()
+  })
+
+  it('shares the report as text through the browser share sheet', async () => {
+    const share = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, share })
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Share report' }))
+    await waitFor(() => expect(share).toHaveBeenCalled())
+    const { title, text } = share.mock.calls[0][0]
+    expect(title).toBe('MedTracker dose report: October 2026')
+    expect(text).toContain('Aspirin: 6 scheduled, 2 taken, 1 skipped, 3 missed, 33% taken')
+  })
+
+  it('shows an empty state, not zeros, for a month with no dose records', async () => {
+    renderHistory()
+    fireEvent.click(await screen.findByRole('button', { name: 'Month' }))
+    await screen.findByRole('heading', { name: 'October 2026' })
+    api.listDoses.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    await screen.findByRole('heading', { name: 'September 2026' })
+    const report = await screen.findByRole('region', { name: 'Monthly report' })
+    expect(within(report).getByText('No doses recorded in September 2026.')).toBeTruthy()
+    expect(within(report).queryByRole('table')).toBeNull()
   })
 
   it("shows a day's doses when the day is tapped", async () => {

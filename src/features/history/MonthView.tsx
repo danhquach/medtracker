@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loading } from '../../components/states'
-import { listDoses } from '../../data/doses'
+import { firstDoseAt, listDoses } from '../../data/doses'
 import type { DoseEvent, DoseStatus, Medication } from '../../lib/types'
 import { addDays, localDayRange, timeLabel } from '../today/dayRange'
 import { Button } from '../../components/Button'
 import { Notice, Row, RowGroup } from '../../components/layout'
+import MonthReport from './MonthReport'
 import StatusIcon from './StatusIcon'
 import { dayHeading, dayOf, fmt, LEGEND, shownStatus, STATUS } from './status'
 
@@ -20,6 +21,18 @@ export default function MonthView({ meds, tz, today }: { meds: Medication[]; tz:
   const [month, setMonth] = useState(current)
   const [result, setResult] = useState<{ key: string; doses?: DoseEvent[]; error?: string } | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
+  // Oldest month with dose records; undefined until known (or if the lookup fails), so paging isn't blocked.
+  const [oldest, setOldest] = useState<string | undefined>()
+  useEffect(() => {
+    let alive = true
+    firstDoseAt().then(
+      (at) => alive && setOldest(at ? dayOf(at, tz).slice(0, 7) : current),
+      () => {},
+    )
+    return () => {
+      alive = false
+    }
+  }, [tz, current])
 
   const first = `${month}-01`
   const days = useMemo(() => {
@@ -84,7 +97,7 @@ export default function MonthView({ meds, tz, today }: { meds: Medication[]; tz:
   return (
     <>
       <div className="month-nav">
-        <Button aria-label="Previous month" onClick={() => go(-1)}>
+        <Button aria-label="Previous month" disabled={oldest !== undefined && month <= oldest} onClick={() => go(-1)}>
           ‹
         </Button>
         <h2 id="month-title">{title}</h2>
@@ -173,6 +186,7 @@ export default function MonthView({ meds, tz, today }: { meds: Medication[]; tz:
           )}
         </section>
       )}
+      {doses && <MonthReport doses={doses} meds={meds} month={month} tz={tz} today={today} />}
     </>
   )
 }

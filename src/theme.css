@@ -1220,3 +1220,52 @@ details.more > summary {
   padding: 4px 0;
   color: var(--text);
 }
+.month-report h3 {
+  margin: 0;
+}
+.report-scroll {
+  overflow-x: auto;
+}
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.report-table th,
+.report-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--divider);
+  text-align: right;
+}
+.report-table th[scope='row'],
+.report-table thead th:first-child {
+  text-align: left;
+}
+.report-table thead th {
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--text-muted);
+}
+.report-total th,
+.report-total td {
+  font-weight: bold;
+}
+/* Printing History prints only the monthly report, dark on white. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .month-report,
+  .month-report * {
+    visibility: visible;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .month-report {
+    position: absolute;
+    inset: 0 0 auto 0;
+  }
+  .report-actions {
+    display: none !important;
+  }
+}
