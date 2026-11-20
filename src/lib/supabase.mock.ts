@@ -225,6 +225,7 @@ const rpcs: Record<string, (a: Row) => Result> = {
 class Query implements PromiseLike<Result> {
   private filters: ((r: Row) => boolean)[] = [(r) => r.user_id === uid()]
   private orderBy: string | null = null
+  private max: number | undefined
   private mode: 'many' | 'single' | 'maybe' = 'many'
   private op: { kind: 'select' } | { kind: 'update'; patch: Row } | { kind: 'delete' } = { kind: 'select' }
   private table: keyof Tables
@@ -258,6 +259,10 @@ class Query implements PromiseLike<Result> {
     this.orderBy = col
     return this
   }
+  limit(n: number) {
+    this.max = n
+    return this
+  }
   single() {
     this.mode = 'single'
     return this
@@ -286,7 +291,7 @@ class Query implements PromiseLike<Result> {
       const c = this.orderBy
       rows = [...rows].sort((a, b) => String(a[c]).localeCompare(String(b[c])))
     }
-    const copy = rows.map((r) => ({ ...r }))
+    const copy = rows.slice(0, this.max).map((r) => ({ ...r }))
     if (this.mode === 'many') return ok(copy)
     if (copy.length === 0 && this.mode === 'maybe') return ok(null)
     return copy.length === 1 ? ok(copy[0]) : fail('Expected one row')

@@ -11,7 +11,7 @@ vi.mock('../lib/supabase', () => ({
     rpc,
     from: (table: string) => ({
       select: () => {
-        const q = { eq: () => q, gte: () => q, lt: () => q, order: () => q, single: () => q, then: (ok: (v: unknown) => unknown, err: (e: unknown) => unknown) => select(table).then(ok, err) }
+        const q = { eq: () => q, gte: () => q, lt: () => q, order: () => q, limit: () => q, single: () => q, then: (ok: (v: unknown) => unknown, err: (e: unknown) => unknown) => select(table).then(ok, err) }
         return q
       },
     }),
@@ -45,6 +45,15 @@ describe('doses data offline', () => {
     select.mockImplementation(offline)
     expect(await doses.listDoses('2026-10-20T00:00:00.000Z', '2026-10-21T00:00:00.000Z')).toEqual([dose()])
     expect(await doses.listDoses('2026-10-22T00:00:00.000Z', '2026-10-23T00:00:00.000Z')).toEqual([])
+  })
+
+  it('firstDoseAt returns the oldest record online, the oldest cached one offline', async () => {
+    select.mockImplementation(() => Promise.resolve({ data: [{ scheduled_for: '2026-08-01T13:00:00Z' }], error: null }))
+    expect(await doses.firstDoseAt()).toBe('2026-08-01T13:00:00Z')
+    select.mockImplementation(() => Promise.resolve({ data: [], error: null }))
+    expect(await doses.firstDoseAt()).toBeNull()
+    select.mockImplementation(offline)
+    expect(await doses.firstDoseAt()).toBe('2026-10-20T12:00:00.000Z')
   })
 
   it('listDoses online returns and caches the server rows', async () => {

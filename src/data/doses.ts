@@ -29,6 +29,19 @@ export async function listDoses(from: string, to: string): Promise<DoseEvent[]> 
   )
 }
 
+/** scheduled_for of the oldest dose record, or null if there are none. Offline: the oldest cached one. */
+export async function firstDoseAt(): Promise<string | null> {
+  return readThrough(
+    async () => {
+      const { data, error } = await supabase.from('dose_events').select('scheduled_for').order('scheduled_for').limit(1)
+      if (error) throw error
+      return (data as Pick<DoseEvent, 'scheduled_for'>[])[0]?.scheduled_for ?? null
+    },
+    (c) => c.doses.reduce<string | null>((min, d) => (min === null || d.scheduled_for < min ? d.scheduled_for : min), null),
+    (c) => c,
+  )
+}
+
 // RPCs returning a composite can come back as null or an object with a null id.
 const rowOrNull = (d: DoseEvent | null): DoseEvent | null => (d && d.id ? d : null)
 
